@@ -70,8 +70,10 @@ def agent_loop(messages: list):
             model=MODEL, system=SYSTEM, messages=messages,
             tools=TOOLS, max_tokens=8000,
         )
-        # Append assistant turn
-        messages.append({"role": "assistant", "content": response.content})
+        # Append assistant turn (convert Pydantic objects to dicts)
+        messages.append({"role": "assistant", "content": [
+            block.model_dump() for block in response.content
+        ]})
         # If the model didn't call a tool, we're done
         if response.stop_reason != "tool_use":
             return
@@ -101,6 +103,6 @@ if __name__ == "__main__":
         response_content = history[-1]["content"]
         if isinstance(response_content, list):
             for block in response_content:
-                if hasattr(block, "text"):
-                    print(block.text)
+                if isinstance(block, dict) and block.get("type") == "text":
+                    print(block.get("text", ""))
         print()
