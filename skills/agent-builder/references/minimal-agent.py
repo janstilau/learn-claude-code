@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Minimal Agent Template - Copy and customize this.
+Minimal Agent Template - 复制并自定义它。
 
-This is the simplest possible working agent (~80 lines).
-It has everything you need: 3 tools + loop.
+这是最简单的可用代理 (~80 行)。
+它拥有你所需的一切: 3 个工具 + 循环。
 
-Usage:
-    1. Set ANTHROPIC_API_KEY environment variable
+用法:
+    1. 设置 ANTHROPIC_API_KEY 环境变量
     2. python minimal-agent.py
-    3. Type commands, 'q' to quit
+    3. 输入命令，'q' 退出
 """
 
 from anthropic import Anthropic
@@ -22,18 +22,18 @@ MODEL = os.getenv("MODEL_NAME", "claude-sonnet-4-20250514")
 WORKDIR = Path.cwd()
 
 # System prompt - keep it simple
-SYSTEM = f"""You are a coding agent at {WORKDIR}.
+SYSTEM = f"""你是位于 {WORKDIR} 的编码代理。
 
-Rules:
-- Use tools to complete tasks
-- Prefer action over explanation
-- Summarize what you did when done"""
+规则:
+- 使用工具完成任务
+- 行动胜于解释
+- 完成后总结你做了什么"""
 
 # Minimal tool set - add more as needed
 TOOLS = [
     {
         "name": "bash",
-        "description": "Run shell command",
+        "description": "运行 shell 命令",
         "input_schema": {
             "type": "object",
             "properties": {"command": {"type": "string"}},
@@ -42,7 +42,7 @@ TOOLS = [
     },
     {
         "name": "read_file",
-        "description": "Read file contents",
+        "description": "读取文件内容",
         "input_schema": {
             "type": "object",
             "properties": {"path": {"type": "string"}},
@@ -51,7 +51,7 @@ TOOLS = [
     },
     {
         "name": "write_file",
-        "description": "Write content to file",
+        "description": "将内容写入文件",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -65,37 +65,37 @@ TOOLS = [
 
 
 def execute_tool(name: str, args: dict) -> str:
-    """Execute a tool and return result."""
+    """执行工具并返回结果。"""
     if name == "bash":
         try:
             r = subprocess.run(
                 args["command"], shell=True, cwd=WORKDIR,
                 capture_output=True, text=True, timeout=60
             )
-            return (r.stdout + r.stderr).strip() or "(empty)"
+            return (r.stdout + r.stderr).strip() or "(无输出)"
         except subprocess.TimeoutExpired:
-            return "Error: Timeout"
+            return "错误: 超时"
 
     if name == "read_file":
         try:
             return (WORKDIR / args["path"]).read_text()[:50000]
         except Exception as e:
-            return f"Error: {e}"
+            return f"错误: {e}"
 
     if name == "write_file":
         try:
             p = WORKDIR / args["path"]
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(args["content"])
-            return f"Wrote {len(args['content'])} bytes to {args['path']}"
+            return f"写入了 {len(args['content'])} 字节到 {args['path']}"
         except Exception as e:
-            return f"Error: {e}"
+            return f"错误: {e}"
 
-    return f"Unknown tool: {name}"
+    return f"未知工具: {name}"
 
 
 def agent(prompt: str, history: list = None) -> str:
-    """Run the agent loop."""
+    """运行代理循环。"""
     if history is None:
         history = []
 
@@ -135,7 +135,7 @@ def agent(prompt: str, history: list = None) -> str:
 
 if __name__ == "__main__":
     print(f"Minimal Agent - {WORKDIR}")
-    print("Type 'q' to quit.\n")
+    print("输入 'q' 退出。\n")
 
     history = []
     while True:

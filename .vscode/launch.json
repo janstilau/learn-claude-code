@@ -1,0 +1,131 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s01: Agent Loop",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s01_agent_loop.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s02: Tool Use",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s02_tool_use.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s03: Todo Write",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s03_todo_write.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s04: Subagent",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s04_subagent.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s05: Skill Loading",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s05_skill_loading.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s06: Context Compact",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s06_context_compact.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s07: Task System",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s07_task_system.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s08: Background Tasks",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s08_background_tasks.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s09: Agent Teams",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s09_agent_teams.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s10: Team Protocols",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s10_team_protocols.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s11: Autonomous Agents",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s11_autonomous_agents.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s12: Worktree Task Isolation",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s12_worktree_task_isolation.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "s_full: Full Agent",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/s_full.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/venv/bin/python"
+        }
+    ]
+}

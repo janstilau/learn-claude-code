@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
-s_full.py - Full Reference Agent
+s_full.py - 完整参考代理
 
-Capstone implementation combining every mechanism from s01-s11.
-Session s12 (task-aware worktree isolation) is taught separately.
-NOT a teaching session -- this is the "put it all together" reference.
+结合了 s01-s11 所有机制的最终实现。
+会话 s12 (任务感知的工作树隔离) 单独教学。
+这不是一个教学会话——这是"融会贯通"的参考实现。
 
     +------------------------------------------------------------------+
-    |                        FULL AGENT                                 |
+    |                        完整代理                                    |
     |                                                                   |
-    |  System prompt (s05 skills, task-first + optional todo nag)      |
+    |  系统提示词 (s05 技能, 任务优先 + 可选待办事项提醒)                 |
     |                                                                   |
-    |  Before each LLM call:                                            |
+    |  每次 LLM 调用前:                                                  |
     |  +--------------------+  +------------------+  +--------------+  |
-    |  | Microcompact (s06) |  | Drain bg (s08)   |  | Check inbox  |  |
-    |  | Auto-compact (s06) |  | notifications    |  | (s09)        |  |
+    |  | 微压缩 (s06)       |  | 排空后台 (s08)    |  | 检查收件箱     |  |
+    |  | 自动压缩 (s06)     |  | 通知             |  | (s09)        |  |
     |  +--------------------+  +------------------+  +--------------+  |
     |                                                                   |
-    |  Tool dispatch (s02 pattern):                                     |
+    |  工具分发 (s02 模式):                                              |
     |  +--------+----------+----------+---------+-----------+          |
     |  | bash   | read     | write    | edit    | TodoWrite |          |
     |  | task   | load_sk  | compress | bg_run  | bg_check  |          |
@@ -26,13 +26,13 @@ NOT a teaching session -- this is the "put it all together" reference.
     |  | plan   | idle     | claim    |         |           |          |
     |  +--------+----------+----------+---------+-----------+          |
     |                                                                   |
-    |  Subagent (s04):  spawn -> work -> return summary                 |
-    |  Teammate (s09):  spawn -> work -> idle -> auto-claim (s11)      |
-    |  Shutdown (s10):  request_id handshake                            |
-    |  Plan gate (s10): submit -> approve/reject                        |
+    |  子代理 (s04):    spawn -> work -> return summary                 |
+    |  队友 (s09):      spawn -> work -> idle -> auto-claim (s11)       |
+    |  关闭 (s10):      request_id 握手                                 |
+    |  计划门控 (s10):  submit -> approve/reject                        |
     +------------------------------------------------------------------+
 
-    REPL commands: /compact /tasks /team /inbox
+    REPL 命令: /compact /tasks /team /inbox
 """
 
 import json
@@ -73,49 +73,49 @@ VALID_MSG_TYPES = {"message", "broadcast", "shutdown_request",
 def safe_path(p: str) -> Path:
     path = (WORKDIR / p).resolve()
     if not path.is_relative_to(WORKDIR):
-        raise ValueError(f"Path escapes workspace: {p}")
+        raise ValueError(f"路径超出工作区范围: {p}")
     return path
 
 def run_bash(command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
     if any(d in command for d in dangerous):
-        return "Error: Dangerous command blocked"
+        return "错误: 危险命令已阻止"
     try:
         r = subprocess.run(command, shell=True, cwd=WORKDIR,
                            capture_output=True, text=True, timeout=120)
         out = (r.stdout + r.stderr).strip()
-        return out[:50000] if out else "(no output)"
+        return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
-        return "Error: Timeout (120s)"
+        return "错误: 超时 (120s)"
 
 def run_read(path: str, limit: int = None) -> str:
     try:
         lines = safe_path(path).read_text().splitlines()
         if limit and limit < len(lines):
-            lines = lines[:limit] + [f"... ({len(lines) - limit} more)"]
+            lines = lines[:limit] + [f"... (还有 {len(lines) - limit} 行)"]
         return "\n".join(lines)[:50000]
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误: {e}"
 
 def run_write(path: str, content: str) -> str:
     try:
         fp = safe_path(path)
         fp.parent.mkdir(parents=True, exist_ok=True)
         fp.write_text(content)
-        return f"Wrote {len(content)} bytes to {path}"
+        return f"写入了 {len(content)} 字节到 {path}"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误: {e}"
 
 def run_edit(path: str, old_text: str, new_text: str) -> str:
     try:
         fp = safe_path(path)
         c = fp.read_text()
         if old_text not in c:
-            return f"Error: Text not found in {path}"
+            return f"错误: 在 {path} 中未找到文本"
         fp.write_text(c.replace(old_text, new_text, 1))
-        return f"Edited {path}"
+        return f"已编辑 {path}"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误: {e}"
 
 
 # === SECTION: todos (s03) ===
@@ -129,26 +129,26 @@ class TodoManager:
             content = str(item.get("content", "")).strip()
             status = str(item.get("status", "pending")).lower()
             af = str(item.get("activeForm", "")).strip()
-            if not content: raise ValueError(f"Item {i}: content required")
+            if not content: raise ValueError(f"第 {i} 项: 需要内容")
             if status not in ("pending", "in_progress", "completed"):
-                raise ValueError(f"Item {i}: invalid status '{status}'")
-            if not af: raise ValueError(f"Item {i}: activeForm required")
+                raise ValueError(f"第 {i} 项: 无效状态 '{status}'")
+            if not af: raise ValueError(f"第 {i} 项: 需要 activeForm")
             if status == "in_progress": ip += 1
             validated.append({"content": content, "status": status, "activeForm": af})
-        if len(validated) > 20: raise ValueError("Max 20 todos")
-        if ip > 1: raise ValueError("Only one in_progress allowed")
+        if len(validated) > 20: raise ValueError("最多 20 个待办事项")
+        if ip > 1: raise ValueError("只允许一个 in_progress")
         self.items = validated
         return self.render()
 
     def render(self) -> str:
-        if not self.items: return "No todos."
+        if not self.items: return "无待办事项。"
         lines = []
         for item in self.items:
             m = {"completed": "[x]", "in_progress": "[>]", "pending": "[ ]"}.get(item["status"], "[?]")
             suffix = f" <- {item['activeForm']}" if item["status"] == "in_progress" else ""
             lines.append(f"{m} {item['content']}{suffix}")
         done = sum(1 for t in self.items if t["status"] == "completed")
-        lines.append(f"\n({done}/{len(self.items)} completed)")
+        lines.append(f"\n({done}/{len(self.items)} 已完成)")
         return "\n".join(lines)
 
     def has_open_items(self) -> bool:
@@ -158,16 +158,16 @@ class TodoManager:
 # === SECTION: subagent (s04) ===
 def run_subagent(prompt: str, agent_type: str = "Explore") -> str:
     sub_tools = [
-        {"name": "bash", "description": "Run command.",
+        {"name": "bash", "description": "运行命令。",
          "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
-        {"name": "read_file", "description": "Read file.",
+        {"name": "read_file", "description": "读取文件。",
          "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
     ]
     if agent_type != "Explore":
         sub_tools += [
-            {"name": "write_file", "description": "Write file.",
+            {"name": "write_file", "description": "写入文件。",
              "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
-            {"name": "edit_file", "description": "Edit file.",
+            {"name": "edit_file", "description": "编辑文件。",
              "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
         ]
     sub_handlers = {
@@ -186,12 +186,12 @@ def run_subagent(prompt: str, agent_type: str = "Explore") -> str:
         results = []
         for b in resp.content:
             if b.type == "tool_use":
-                h = sub_handlers.get(b.name, lambda **kw: "Unknown tool")
+                h = sub_handlers.get(b.name, lambda **kw: "未知工具")
                 results.append({"type": "tool_result", "tool_use_id": b.id, "content": str(h(**b.input))[:50000]})
         sub_msgs.append({"role": "user", "content": results})
     if resp:
-        return "".join(b.text for b in resp.content if hasattr(b, "text")) or "(no summary)"
-    return "(subagent failed)"
+        return "".join(b.text for b in resp.content if hasattr(b, "text")) or "(无摘要)"
+    return "(子代理失败)"
 
 
 # === SECTION: skills (s05) ===
@@ -213,12 +213,12 @@ class SkillLoader:
                 self.skills[name] = {"meta": meta, "body": body}
 
     def descriptions(self) -> str:
-        if not self.skills: return "(no skills)"
+        if not self.skills: return "(无技能)"
         return "\n".join(f"  - {n}: {s['meta'].get('description', '-')}" for n, s in self.skills.items())
 
     def load(self, name: str) -> str:
         s = self.skills.get(name)
-        if not s: return f"Error: Unknown skill '{name}'. Available: {', '.join(self.skills.keys())}"
+        if not s: return f"错误: 未知技能 '{name}'。可用: {', '.join(self.skills.keys())}"
         return f"<skill name=\"{name}\">\n{s['body']}\n</skill>"
 
 
@@ -237,7 +237,7 @@ def microcompact(messages: list):
         return
     for part in indices[:-3]:
         if isinstance(part.get("content"), str) and len(part["content"]) > 100:
-            part["content"] = "[cleared]"
+            part["content"] = "[已清除]"
 
 def auto_compact(messages: list) -> list:
     TRANSCRIPT_DIR.mkdir(exist_ok=True)
@@ -248,13 +248,13 @@ def auto_compact(messages: list) -> list:
     conv_text = json.dumps(messages, default=str)[:80000]
     resp = client.messages.create(
         model=MODEL,
-        messages=[{"role": "user", "content": f"Summarize for continuity:\n{conv_text}"}],
+        messages=[{"role": "user", "content": f"总结以便继续:\n{conv_text}"}],
         max_tokens=2000,
     )
     summary = resp.content[0].text
     return [
-        {"role": "user", "content": f"[Compressed. Transcript: {path}]\n{summary}"},
-        {"role": "assistant", "content": "Understood. Continuing with summary context."},
+        {"role": "user", "content": f"[已压缩。记录: {path}]\n{summary}"},
+        {"role": "assistant", "content": "明白。继续使用摘要上下文。"},
     ]
 
 
@@ -269,7 +269,7 @@ class TaskManager:
 
     def _load(self, tid: int) -> dict:
         p = TASKS_DIR / f"task_{tid}.json"
-        if not p.exists(): raise ValueError(f"Task {tid} not found")
+        if not p.exists(): raise ValueError(f"任务 {tid} 未找到")
         return json.loads(p.read_text())
 
     def _save(self, task: dict):
@@ -297,7 +297,7 @@ class TaskManager:
                         self._save(t)
             if status == "deleted":
                 (TASKS_DIR / f"task_{tid}.json").unlink(missing_ok=True)
-                return f"Task {tid} deleted"
+                return f"任务 {tid} 已删除"
         if add_blocked_by:
             task["blockedBy"] = list(set(task["blockedBy"] + add_blocked_by))
         if add_blocks:
@@ -307,12 +307,12 @@ class TaskManager:
 
     def list_all(self) -> str:
         tasks = [json.loads(f.read_text()) for f in sorted(TASKS_DIR.glob("task_*.json"))]
-        if not tasks: return "No tasks."
+        if not tasks: return "无任务。"
         lines = []
         for t in tasks:
             m = {"pending": "[ ]", "in_progress": "[>]", "completed": "[x]"}.get(t["status"], "[?]")
             owner = f" @{t['owner']}" if t.get("owner") else ""
-            blocked = f" (blocked by: {t['blockedBy']})" if t.get("blockedBy") else ""
+            blocked = f" (被阻塞: {t['blockedBy']})" if t.get("blockedBy") else ""
             lines.append(f"{m} #{t['id']}: {t['subject']}{owner}{blocked}")
         return "\n".join(lines)
 
@@ -321,7 +321,7 @@ class TaskManager:
         task["owner"] = owner
         task["status"] = "in_progress"
         self._save(task)
-        return f"Claimed task #{tid} for {owner}"
+        return f"已为 {owner} 认领任务 #{tid}"
 
 
 # === SECTION: background (s08) ===
@@ -334,14 +334,14 @@ class BackgroundManager:
         tid = str(uuid.uuid4())[:8]
         self.tasks[tid] = {"status": "running", "command": command, "result": None}
         threading.Thread(target=self._exec, args=(tid, command, timeout), daemon=True).start()
-        return f"Background task {tid} started: {command[:80]}"
+        return f"后台任务 {tid} 已启动: {command[:80]}"
 
     def _exec(self, tid: str, command: str, timeout: int):
         try:
             r = subprocess.run(command, shell=True, cwd=WORKDIR,
                                capture_output=True, text=True, timeout=timeout)
             output = (r.stdout + r.stderr).strip()[:50000]
-            self.tasks[tid].update({"status": "completed", "result": output or "(no output)"})
+            self.tasks[tid].update({"status": "completed", "result": output or "(无输出)"})
         except Exception as e:
             self.tasks[tid].update({"status": "error", "result": str(e)})
         self.notifications.put({"task_id": tid, "status": self.tasks[tid]["status"],
@@ -350,8 +350,8 @@ class BackgroundManager:
     def check(self, tid: str = None) -> str:
         if tid:
             t = self.tasks.get(tid)
-            return f"[{t['status']}] {t.get('result', '(running)')}" if t else f"Unknown: {tid}"
-        return "\n".join(f"{k}: [{v['status']}] {v['command'][:60]}" for k, v in self.tasks.items()) or "No bg tasks."
+            return f"[{t['status']}] {t.get('result', '(运行中)')}" if t else f"未知: {tid}"
+        return "\n".join(f"{k}: [{v['status']}] {v['command'][:60]}" for k, v in self.tasks.items()) or "无后台任务。"
 
     def drain(self) -> list:
         notifs = []
@@ -372,7 +372,7 @@ class MessageBus:
         if extra: msg.update(extra)
         with open(INBOX_DIR / f"{to}.jsonl", "a") as f:
             f.write(json.dumps(msg) + "\n")
-        return f"Sent {msg_type} to {to}"
+        return f"已发送 {msg_type} 给 {to}"
 
     def read_inbox(self, name: str) -> list:
         path = INBOX_DIR / f"{name}.jsonl"
@@ -387,7 +387,7 @@ class MessageBus:
             if n != sender:
                 self.send(sender, n, content, "broadcast")
                 count += 1
-        return f"Broadcast to {count} teammates"
+        return f"已广播给 {count} 个队友"
 
 
 # === SECTION: shutdown + plan tracking (s10) ===
@@ -422,7 +422,7 @@ class TeammateManager:
         member = self._find(name)
         if member:
             if member["status"] not in ("idle", "shutdown"):
-                return f"Error: '{name}' is currently {member['status']}"
+                return f"错误: '{name}' 当前状态为 {member['status']}"
             member["status"] = "working"
             member["role"] = role
         else:
@@ -430,7 +430,7 @@ class TeammateManager:
             self.config["members"].append(member)
         self._save()
         threading.Thread(target=self._loop, args=(name, role, prompt), daemon=True).start()
-        return f"Spawned '{name}' (role: {role})"
+        return f"已生成 '{name}' (角色: {role})"
 
     def _set_status(self, name: str, status: str):
         member = self._find(name)
@@ -440,17 +440,17 @@ class TeammateManager:
 
     def _loop(self, name: str, role: str, prompt: str):
         team_name = self.config["team_name"]
-        sys_prompt = (f"You are '{name}', role: {role}, team: {team_name}, at {WORKDIR}. "
-                      f"Use idle when done with current work. You may auto-claim tasks.")
+        sys_prompt = (f"你是 '{name}'，角色: {role}，团队: {team_name}，位于 {WORKDIR}。"
+                      f"完成当前工作后使用 idle。你可以自动认领任务。")
         messages = [{"role": "user", "content": prompt}]
         tools = [
-            {"name": "bash", "description": "Run command.", "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
-            {"name": "read_file", "description": "Read file.", "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
-            {"name": "write_file", "description": "Write file.", "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
-            {"name": "edit_file", "description": "Edit file.", "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
-            {"name": "send_message", "description": "Send message.", "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "content": {"type": "string"}}, "required": ["to", "content"]}},
-            {"name": "idle", "description": "Signal no more work.", "input_schema": {"type": "object", "properties": {}}},
-            {"name": "claim_task", "description": "Claim task by ID.", "input_schema": {"type": "object", "properties": {"task_id": {"type": "integer"}}, "required": ["task_id"]}},
+            {"name": "bash", "description": "运行命令。", "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
+            {"name": "read_file", "description": "读取文件。", "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
+            {"name": "write_file", "description": "写入文件。", "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
+            {"name": "edit_file", "description": "编辑文件。", "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
+            {"name": "send_message", "description": "发送消息。", "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "content": {"type": "string"}}, "required": ["to", "content"]}},
+            {"name": "idle", "description": "表明没有更多工作。", "input_schema": {"type": "object", "properties": {}}},
+            {"name": "claim_task", "description": "通过 ID 认领任务。", "input_schema": {"type": "object", "properties": {"task_id": {"type": "integer"}}, "required": ["task_id"]}},
         ]
         while True:
             # -- WORK PHASE --
@@ -477,7 +477,7 @@ class TeammateManager:
                     if block.type == "tool_use":
                         if block.name == "idle":
                             idle_requested = True
-                            output = "Entering idle phase."
+                            output = "进入空闲阶段。"
                         elif block.name == "claim_task":
                             output = self.task_mgr.claim(block.input["task_id"], name)
                         elif block.name == "send_message":
@@ -487,7 +487,7 @@ class TeammateManager:
                                         "read_file": lambda **kw: run_read(kw["path"]),
                                         "write_file": lambda **kw: run_write(kw["path"], kw["content"]),
                                         "edit_file": lambda **kw: run_edit(kw["path"], kw["old_text"], kw["new_text"])}
-                            output = dispatch.get(block.name, lambda **kw: "Unknown")(**block.input)
+                            output = dispatch.get(block.name, lambda **kw: "未知")(**block.input)
                         print(f"  [{name}] {block.name}: {str(output)[:120]}")
                         results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(output)})
                 messages.append({"role": "user", "content": results})
@@ -518,11 +518,11 @@ class TeammateManager:
                     # Identity re-injection for compressed contexts
                     if len(messages) <= 3:
                         messages.insert(0, {"role": "user", "content":
-                            f"<identity>You are '{name}', role: {role}, team: {team_name}.</identity>"})
-                        messages.insert(1, {"role": "assistant", "content": f"I am {name}. Continuing."})
+                            f"<identity>你是 '{name}'，角色: {role}，团队: {team_name}。</identity>"})
+                        messages.insert(1, {"role": "assistant", "content": f"我是 {name}。继续。"})
                     messages.append({"role": "user", "content":
-                        f"<auto-claimed>Task #{task['id']}: {task['subject']}\n{task.get('description', '')}</auto-claimed>"})
-                    messages.append({"role": "assistant", "content": f"Claimed task #{task['id']}. Working on it."})
+                        f"<auto-claimed>任务 #{task['id']}: {task['subject']}\n{task.get('description', '')}</auto-claimed>"})
+                    messages.append({"role": "assistant", "content": f"已认领任务 #{task['id']}。正在处理。"})
                     resume = True
                     break
             if not resume:
@@ -531,8 +531,8 @@ class TeammateManager:
             self._set_status(name, "working")
 
     def list_all(self) -> str:
-        if not self.config["members"]: return "No teammates."
-        lines = [f"Team: {self.config['team_name']}"]
+        if not self.config["members"]: return "没有队友。"
+        lines = [f"团队: {self.config['team_name']}"]
         for m in self.config["members"]:
             lines.append(f"  {m['name']} ({m['role']}): {m['status']}")
         return "\n".join(lines)
@@ -550,27 +550,27 @@ BUS = MessageBus()
 TEAM = TeammateManager(BUS, TASK_MGR)
 
 # === SECTION: system_prompt ===
-SYSTEM = f"""You are a coding agent at {WORKDIR}. Use tools to solve tasks.
-Prefer task_create/task_update/task_list for multi-step work. Use TodoWrite for short checklists.
-Use task for subagent delegation. Use load_skill for specialized knowledge.
-Skills: {SKILLS.descriptions()}"""
+SYSTEM = f"""你是位于 {WORKDIR} 的编码代理。使用工具来解决任务。
+对于多步工作，首选 task_create/task_update/task_list。使用 TodoWrite 进行简短的检查清单。
+使用 task 进行子代理委托。使用 load_skill 加载专业知识。
+技能: {SKILLS.descriptions()}"""
 
 
 # === SECTION: shutdown_protocol (s10) ===
 def handle_shutdown_request(teammate: str) -> str:
     req_id = str(uuid.uuid4())[:8]
     shutdown_requests[req_id] = {"target": teammate, "status": "pending"}
-    BUS.send("lead", teammate, "Please shut down.", "shutdown_request", {"request_id": req_id})
-    return f"Shutdown request {req_id} sent to '{teammate}'"
+    BUS.send("lead", teammate, "请关闭。", "shutdown_request", {"request_id": req_id})
+    return f"关闭请求 {req_id} 已发送给 '{teammate}'"
 
 # === SECTION: plan_approval (s10) ===
 def handle_plan_review(request_id: str, approve: bool, feedback: str = "") -> str:
     req = plan_requests.get(request_id)
-    if not req: return f"Error: Unknown plan request_id '{request_id}'"
+    if not req: return f"错误: 未知的计划 request_id '{request_id}'"
     req["status"] = "approved" if approve else "rejected"
     BUS.send("lead", req["from"], feedback, "plan_approval_response",
              {"request_id": request_id, "approve": approve, "feedback": feedback})
-    return f"Plan {req['status']} for '{req['from']}'"
+    return f"计划对于 '{req['from']}' 已{'批准' if approve else '拒绝'}"
 
 
 # === SECTION: tool_dispatch (s02) ===
@@ -582,7 +582,7 @@ TOOL_HANDLERS = {
     "TodoWrite":        lambda **kw: TODO.update(kw["items"]),
     "task":             lambda **kw: run_subagent(kw["prompt"], kw.get("agent_type", "Explore")),
     "load_skill":       lambda **kw: SKILLS.load(kw["name"]),
-    "compress":         lambda **kw: "Compressing...",
+    "compress":         lambda **kw: "正在压缩...",
     "background_run":   lambda **kw: BG.run(kw["command"], kw.get("timeout", 120)),
     "check_background": lambda **kw: BG.check(kw.get("task_id")),
     "task_create":      lambda **kw: TASK_MGR.create(kw["subject"], kw.get("description", "")),
@@ -596,56 +596,56 @@ TOOL_HANDLERS = {
     "broadcast":        lambda **kw: BUS.broadcast("lead", kw["content"], TEAM.member_names()),
     "shutdown_request": lambda **kw: handle_shutdown_request(kw["teammate"]),
     "plan_approval":    lambda **kw: handle_plan_review(kw["request_id"], kw["approve"], kw.get("feedback", "")),
-    "idle":             lambda **kw: "Lead does not idle.",
+    "idle":             lambda **kw: "领导不空闲。",
     "claim_task":       lambda **kw: TASK_MGR.claim(kw["task_id"], "lead"),
 }
 
 TOOLS = [
-    {"name": "bash", "description": "Run a shell command.",
+    {"name": "bash", "description": "运行 Shell 命令。",
      "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
-    {"name": "read_file", "description": "Read file contents.",
+    {"name": "read_file", "description": "读取文件内容。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["path"]}},
-    {"name": "write_file", "description": "Write content to file.",
+    {"name": "write_file", "description": "将内容写入文件。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
-    {"name": "edit_file", "description": "Replace exact text in file.",
+    {"name": "edit_file", "description": "替换文件中的确切文本。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
-    {"name": "TodoWrite", "description": "Update task tracking list.",
+    {"name": "TodoWrite", "description": "更新任务跟踪列表。",
      "input_schema": {"type": "object", "properties": {"items": {"type": "array", "items": {"type": "object", "properties": {"content": {"type": "string"}, "status": {"type": "string", "enum": ["pending", "in_progress", "completed"]}, "activeForm": {"type": "string"}}, "required": ["content", "status", "activeForm"]}}}, "required": ["items"]}},
-    {"name": "task", "description": "Spawn a subagent for isolated exploration or work.",
+    {"name": "task", "description": "生成一个子代理进行隔离探索或工作。",
      "input_schema": {"type": "object", "properties": {"prompt": {"type": "string"}, "agent_type": {"type": "string", "enum": ["Explore", "general-purpose"]}}, "required": ["prompt"]}},
-    {"name": "load_skill", "description": "Load specialized knowledge by name.",
+    {"name": "load_skill", "description": "按名称加载专业知识。",
      "input_schema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
-    {"name": "compress", "description": "Manually compress conversation context.",
+    {"name": "compress", "description": "手动压缩对话上下文。",
      "input_schema": {"type": "object", "properties": {}}},
-    {"name": "background_run", "description": "Run command in background thread.",
+    {"name": "background_run", "description": "在后台线程中运行命令。",
      "input_schema": {"type": "object", "properties": {"command": {"type": "string"}, "timeout": {"type": "integer"}}, "required": ["command"]}},
-    {"name": "check_background", "description": "Check background task status.",
+    {"name": "check_background", "description": "检查后台任务状态。",
      "input_schema": {"type": "object", "properties": {"task_id": {"type": "string"}}}},
-    {"name": "task_create", "description": "Create a persistent file task.",
+    {"name": "task_create", "description": "创建一个持久的文件任务。",
      "input_schema": {"type": "object", "properties": {"subject": {"type": "string"}, "description": {"type": "string"}}, "required": ["subject"]}},
-    {"name": "task_get", "description": "Get task details by ID.",
+    {"name": "task_get", "description": "通过 ID 获取任务详情。",
      "input_schema": {"type": "object", "properties": {"task_id": {"type": "integer"}}, "required": ["task_id"]}},
-    {"name": "task_update", "description": "Update task status or dependencies.",
+    {"name": "task_update", "description": "更新任务状态或依赖关系。",
      "input_schema": {"type": "object", "properties": {"task_id": {"type": "integer"}, "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "deleted"]}, "add_blocked_by": {"type": "array", "items": {"type": "integer"}}, "add_blocks": {"type": "array", "items": {"type": "integer"}}}, "required": ["task_id"]}},
-    {"name": "task_list", "description": "List all tasks.",
+    {"name": "task_list", "description": "列出所有任务。",
      "input_schema": {"type": "object", "properties": {}}},
-    {"name": "spawn_teammate", "description": "Spawn a persistent autonomous teammate.",
+    {"name": "spawn_teammate", "description": "生成一个持久的自主队友。",
      "input_schema": {"type": "object", "properties": {"name": {"type": "string"}, "role": {"type": "string"}, "prompt": {"type": "string"}}, "required": ["name", "role", "prompt"]}},
-    {"name": "list_teammates", "description": "List all teammates.",
+    {"name": "list_teammates", "description": "列出所有队友。",
      "input_schema": {"type": "object", "properties": {}}},
-    {"name": "send_message", "description": "Send a message to a teammate.",
+    {"name": "send_message", "description": "向队友发送消息。",
      "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "content": {"type": "string"}, "msg_type": {"type": "string", "enum": list(VALID_MSG_TYPES)}}, "required": ["to", "content"]}},
-    {"name": "read_inbox", "description": "Read and drain the lead's inbox.",
+    {"name": "read_inbox", "description": "读取并清空领导的收件箱。",
      "input_schema": {"type": "object", "properties": {}}},
-    {"name": "broadcast", "description": "Send message to all teammates.",
+    {"name": "broadcast", "description": "向所有队友发送消息。",
      "input_schema": {"type": "object", "properties": {"content": {"type": "string"}}, "required": ["content"]}},
-    {"name": "shutdown_request", "description": "Request a teammate to shut down.",
+    {"name": "shutdown_request", "description": "请求队友关闭。",
      "input_schema": {"type": "object", "properties": {"teammate": {"type": "string"}}, "required": ["teammate"]}},
-    {"name": "plan_approval", "description": "Approve or reject a teammate's plan.",
+    {"name": "plan_approval", "description": "批准或拒绝队友的计划。",
      "input_schema": {"type": "object", "properties": {"request_id": {"type": "string"}, "approve": {"type": "boolean"}, "feedback": {"type": "string"}}, "required": ["request_id", "approve"]}},
-    {"name": "idle", "description": "Enter idle state.",
+    {"name": "idle", "description": "进入空闲状态。",
      "input_schema": {"type": "object", "properties": {}}},
-    {"name": "claim_task", "description": "Claim a task from the board.",
+    {"name": "claim_task", "description": "从任务板认领任务。",
      "input_schema": {"type": "object", "properties": {"task_id": {"type": "integer"}}, "required": ["task_id"]}},
 ]
 
@@ -657,19 +657,19 @@ def agent_loop(messages: list):
         # s06: compression pipeline
         microcompact(messages)
         if estimate_tokens(messages) > TOKEN_THRESHOLD:
-            print("[auto-compact triggered]")
+            print("[触发自动压缩]")
             messages[:] = auto_compact(messages)
         # s08: drain background notifications
         notifs = BG.drain()
         if notifs:
             txt = "\n".join(f"[bg:{n['task_id']}] {n['status']}: {n['result']}" for n in notifs)
             messages.append({"role": "user", "content": f"<background-results>\n{txt}\n</background-results>"})
-            messages.append({"role": "assistant", "content": "Noted background results."})
+            messages.append({"role": "assistant", "content": "已记录后台结果。"})
         # s10: check lead inbox
         inbox = BUS.read_inbox("lead")
         if inbox:
             messages.append({"role": "user", "content": f"<inbox>{json.dumps(inbox, indent=2)}</inbox>"})
-            messages.append({"role": "assistant", "content": "Noted inbox messages."})
+            messages.append({"role": "assistant", "content": "已收到收件箱消息。"})
         # LLM call
         response = client.messages.create(
             model=MODEL, system=SYSTEM, messages=messages,
@@ -688,9 +688,9 @@ def agent_loop(messages: list):
                     manual_compress = True
                 handler = TOOL_HANDLERS.get(block.name)
                 try:
-                    output = handler(**block.input) if handler else f"Unknown tool: {block.name}"
+                    output = handler(**block.input) if handler else f"未知工具: {block.name}"
                 except Exception as e:
-                    output = f"Error: {e}"
+                    output = f"错误: {e}"
                 print(f"> {block.name}: {str(output)[:200]}")
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(output)})
                 if block.name == "TodoWrite":
@@ -698,11 +698,11 @@ def agent_loop(messages: list):
         # s03: nag reminder (only when todo workflow is active)
         rounds_without_todo = 0 if used_todo else rounds_without_todo + 1
         if TODO.has_open_items() and rounds_without_todo >= 3:
-            results.insert(0, {"type": "text", "text": "<reminder>Update your todos.</reminder>"})
+            results.insert(0, {"type": "text", "text": "<reminder>更新你的待办事项。</reminder>"})
         messages.append({"role": "user", "content": results})
         # s06: manual compress
         if manual_compress:
-            print("[manual compact]")
+            print("[手动压缩]")
             messages[:] = auto_compact(messages)
 
 
@@ -718,7 +718,7 @@ if __name__ == "__main__":
             break
         if query.strip() == "/compact":
             if history:
-                print("[manual compact via /compact]")
+                print("[通过 /compact 手动压缩]")
                 history[:] = auto_compact(history)
             continue
         if query.strip() == "/tasks":

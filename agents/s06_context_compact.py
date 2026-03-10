@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-s06_context_compact.py - Compact
+s06_context_compact.py - 上下文压缩
 
-Three-layer compression pipeline so the agent can work forever:
+三层压缩管道，使代理能够永远工作下去：
 
     Every turn:
     +------------------+
@@ -30,7 +30,7 @@ Three-layer compression pipeline so the agent can work forever:
                   Model calls compact -> immediate summarization.
                   Same as auto, triggered manually.
 
-Key insight: "The agent can forget strategically and keep working forever."
+核心见解：“代理可以策略性地遗忘并永远工作下去。”
 """
 
 import json
@@ -51,7 +51,7 @@ WORKDIR = Path.cwd()
 client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
 MODEL = os.environ["MODEL_ID"]
 
-SYSTEM = f"You are a coding agent at {WORKDIR}. Use tools to solve tasks."
+SYSTEM = f"你是一个位于 {WORKDIR} 的编码代理。使用工具来解决任务。"
 
 THRESHOLD = 50000
 TRANSCRIPT_DIR = WORKDIR / ".transcripts"
@@ -89,7 +89,7 @@ def micro_compact(messages: list) -> list:
         if isinstance(result.get("content"), str) and len(result["content"]) > 100:
             tool_id = result.get("tool_use_id", "")
             tool_name = tool_name_map.get(tool_id, "unknown")
-            result["content"] = f"[Previous: used {tool_name}]"
+            result["content"] = f"[之前：使用了 {tool_name}]"
     return messages
 
 
@@ -101,22 +101,22 @@ def auto_compact(messages: list) -> list:
     with open(transcript_path, "w") as f:
         for msg in messages:
             f.write(json.dumps(msg, default=str) + "\n")
-    print(f"[transcript saved: {transcript_path}]")
+    print(f"[对话记录已保存：{transcript_path}]")
     # Ask LLM to summarize
     conversation_text = json.dumps(messages, default=str)[:80000]
     response = client.messages.create(
         model=MODEL,
         messages=[{"role": "user", "content":
-            "Summarize this conversation for continuity. Include: "
-            "1) What was accomplished, 2) Current state, 3) Key decisions made. "
-            "Be concise but preserve critical details.\n\n" + conversation_text}],
+            "为了保持连续性，请总结这段对话。包括："
+            "1) 完成了什么，2) 当前状态，3) 做出的关键决定。"
+            "简明扼要，但保留关键细节。\n\n" + conversation_text}],
         max_tokens=2000,
     )
     summary = response.content[0].text
     # Replace all messages with compressed summary
     return [
-        {"role": "user", "content": f"[Conversation compressed. Transcript: {transcript_path}]\n\n{summary}"},
-        {"role": "assistant", "content": "Understood. I have the context from the summary. Continuing."},
+        {"role": "user", "content": f"[对话已压缩。记录：{transcript_path}]\n\n{summary}"},
+        {"role": "assistant", "content": "收到。我已获取摘要中的上下文。继续。"},
     ]
 
 
@@ -124,49 +124,49 @@ def auto_compact(messages: list) -> list:
 def safe_path(p: str) -> Path:
     path = (WORKDIR / p).resolve()
     if not path.is_relative_to(WORKDIR):
-        raise ValueError(f"Path escapes workspace: {p}")
+        raise ValueError(f"路径超出工作区范围：{p}")
     return path
 
 def run_bash(command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
     if any(d in command for d in dangerous):
-        return "Error: Dangerous command blocked"
+        return "错误：危险命令被拦截"
     try:
         r = subprocess.run(command, shell=True, cwd=WORKDIR,
                            capture_output=True, text=True, timeout=120)
         out = (r.stdout + r.stderr).strip()
-        return out[:50000] if out else "(no output)"
+        return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
-        return "Error: Timeout (120s)"
+        return "错误：超时 (120秒)"
 
 def run_read(path: str, limit: int = None) -> str:
     try:
         lines = safe_path(path).read_text().splitlines()
         if limit and limit < len(lines):
-            lines = lines[:limit] + [f"... ({len(lines) - limit} more)"]
+            lines = lines[:limit] + [f"... (还有 {len(lines) - limit} 行)"]
         return "\n".join(lines)[:50000]
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 def run_write(path: str, content: str) -> str:
     try:
         fp = safe_path(path)
         fp.parent.mkdir(parents=True, exist_ok=True)
         fp.write_text(content)
-        return f"Wrote {len(content)} bytes"
+        return f"已写入 {len(content)} 字节"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 def run_edit(path: str, old_text: str, new_text: str) -> str:
     try:
         fp = safe_path(path)
         content = fp.read_text()
         if old_text not in content:
-            return f"Error: Text not found in {path}"
+            return f"错误：在 {path} 中未找到文本"
         fp.write_text(content.replace(old_text, new_text, 1))
-        return f"Edited {path}"
+        return f"已编辑 {path}"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 
 TOOL_HANDLERS = {
@@ -174,20 +174,20 @@ TOOL_HANDLERS = {
     "read_file":  lambda **kw: run_read(kw["path"], kw.get("limit")),
     "write_file": lambda **kw: run_write(kw["path"], kw["content"]),
     "edit_file":  lambda **kw: run_edit(kw["path"], kw["old_text"], kw["new_text"]),
-    "compact":    lambda **kw: "Manual compression requested.",
+    "compact":    lambda **kw: "已请求手动压缩。",
 }
 
 TOOLS = [
-    {"name": "bash", "description": "Run a shell command.",
+    {"name": "bash", "description": "运行 shell 命令。",
      "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
-    {"name": "read_file", "description": "Read file contents.",
+    {"name": "read_file", "description": "读取文件内容。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["path"]}},
-    {"name": "write_file", "description": "Write content to file.",
+    {"name": "write_file", "description": "写入内容到文件。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
-    {"name": "edit_file", "description": "Replace exact text in file.",
+    {"name": "edit_file", "description": "替换文件中的确切文本。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
-    {"name": "compact", "description": "Trigger manual conversation compression.",
-     "input_schema": {"type": "object", "properties": {"focus": {"type": "string", "description": "What to preserve in the summary"}}}},
+    {"name": "compact", "description": "触发手动对话压缩。",
+     "input_schema": {"type": "object", "properties": {"focus": {"type": "string", "description": "在摘要中保留的重点"}}}},
 ]
 
 
@@ -197,7 +197,7 @@ def agent_loop(messages: list):
         micro_compact(messages)
         # Layer 2: auto_compact if token estimate exceeds threshold
         if estimate_tokens(messages) > THRESHOLD:
-            print("[auto_compact triggered]")
+            print("[触发自动压缩]")
             messages[:] = auto_compact(messages)
         response = client.messages.create(
             model=MODEL, system=SYSTEM, messages=messages,
@@ -212,19 +212,19 @@ def agent_loop(messages: list):
             if block.type == "tool_use":
                 if block.name == "compact":
                     manual_compact = True
-                    output = "Compressing..."
+                    output = "正在压缩..."
                 else:
                     handler = TOOL_HANDLERS.get(block.name)
                     try:
-                        output = handler(**block.input) if handler else f"Unknown tool: {block.name}"
+                        output = handler(**block.input) if handler else f"未知工具：{block.name}"
                     except Exception as e:
-                        output = f"Error: {e}"
+                        output = f"错误：{e}"
                 print(f"> {block.name}: {str(output)[:200]}")
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(output)})
         messages.append({"role": "user", "content": results})
         # Layer 3: manual compact triggered by the compact tool
         if manual_compact:
-            print("[manual compact]")
+            print("[手动压缩]")
             messages[:] = auto_compact(messages)
 
 

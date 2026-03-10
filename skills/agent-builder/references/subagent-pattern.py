@@ -1,8 +1,7 @@
 """
-Subagent Pattern - How to implement Task tool for context isolation.
+Subagent Pattern - 如何实现 Task 工具以进行上下文隔离。
 
-The key insight: spawn child agents with ISOLATED context to prevent
-"context pollution" where exploration details fill up the main conversation.
+核心洞察: 衍生具有隔离上下文的子代理，以防止"上下文污染"，即探索细节填满主对话。
 """
 
 import time
@@ -12,36 +11,36 @@ import sys
 
 
 # =============================================================================
-# AGENT TYPE REGISTRY
+# 代理类型注册表
 # =============================================================================
 
 AGENT_TYPES = {
     # Explore: Read-only, for searching and analyzing
     "explore": {
-        "description": "Read-only agent for exploring code, finding files, searching",
+        "description": "只读代理，用于探索代码、查找文件、搜索",
         "tools": ["bash", "read_file"],  # No write access!
-        "prompt": "You are an exploration agent. Search and analyze, but NEVER modify files. Return a concise summary of what you found.",
+        "prompt": "你是一个探索代理。搜索和分析，但绝不要修改文件。返回你发现内容的简明摘要。",
     },
 
     # Code: Full-powered, for implementation
     "code": {
-        "description": "Full agent for implementing features and fixing bugs",
+        "description": "全能代理，用于实现功能和修复错误",
         "tools": "*",  # All tools
-        "prompt": "You are a coding agent. Implement the requested changes efficiently. Return a summary of what you changed.",
+        "prompt": "你是一个编码代理。高效地实现请求的更改。返回你更改内容的摘要。",
     },
 
     # Plan: Read-only, for design work
     "plan": {
-        "description": "Planning agent for designing implementation strategies",
+        "description": "规划代理，用于设计实施策略",
         "tools": ["bash", "read_file"],  # Read-only
-        "prompt": "You are a planning agent. Analyze the codebase and output a numbered implementation plan. Do NOT make any changes.",
+        "prompt": "你是一个规划代理。分析代码库并输出编号的实施计划。不要做任何更改。",
     },
 
     # Add your own types here...
     # "test": {
-    #     "description": "Testing agent for running and analyzing tests",
+    #     "description": "测试代理，用于运行和分析测试",
     #     "tools": ["bash", "read_file"],
-    #     "prompt": "Run tests and report results. Don't modify code.",
+    #     "prompt": "运行测试并报告结果。不要修改代码。",
     # },
 }
 
@@ -72,39 +71,39 @@ def get_tools_for_agent(agent_type: str, base_tools: list) -> list:
 
 
 # =============================================================================
-# TASK TOOL DEFINITION
+# 任务工具定义
 # =============================================================================
 
 TASK_TOOL = {
     "name": "Task",
-    "description": f"""Spawn a subagent for a focused subtask.
+    "description": f"""衍生一个子代理来处理专注的子任务。
 
-Subagents run in ISOLATED context - they don't see parent's history.
-Use this to keep the main conversation clean.
+子代理在隔离的上下文中运行 - 它们看不到父代理的历史记录。
+使用此功能保持主对话整洁。
 
-Agent types:
+代理类型:
 {get_agent_descriptions()}
 
-Example uses:
-- Task(explore): "Find all files using the auth module"
-- Task(plan): "Design a migration strategy for the database"
-- Task(code): "Implement the user registration form"
+使用示例:
+- Task(explore): "查找所有使用 auth 模块的文件"
+- Task(plan): "为数据库设计迁移策略"
+- Task(code): "实现用户注册表单"
 """,
     "input_schema": {
         "type": "object",
         "properties": {
             "description": {
                 "type": "string",
-                "description": "Short task name (3-5 words) for progress display"
+                "description": "用于进度显示的简短任务名称 (3-5 个词)"
             },
             "prompt": {
                 "type": "string",
-                "description": "Detailed instructions for the subagent"
+                "description": "子代理的详细说明"
             },
             "agent_type": {
                 "type": "string",
                 "enum": list(AGENT_TYPES.keys()),
-                "description": "Type of agent to spawn"
+                "description": "要衍生的代理类型"
             },
         },
         "required": ["description", "prompt", "agent_type"],
@@ -113,7 +112,7 @@ Example uses:
 
 
 # =============================================================================
-# SUBAGENT EXECUTION
+# 子代理执行
 # =============================================================================
 
 def run_task(description: str, prompt: str, agent_type: str,
@@ -141,16 +140,16 @@ def run_task(description: str, prompt: str, agent_type: str,
         Final text output from subagent
     """
     if agent_type not in AGENT_TYPES:
-        return f"Error: Unknown agent type '{agent_type}'"
+        return f"错误: 未知代理类型 '{agent_type}'"
 
     config = AGENT_TYPES[agent_type]
 
     # Agent-specific system prompt
-    sub_system = f"""You are a {agent_type} subagent at {workdir}.
+    sub_system = f"""你是一个 {agent_type} 子代理，位于 {workdir}。
 
 {config["prompt"]}
 
-Complete the task and return a clear, concise summary."""
+完成任务并返回清晰、简明的摘要。"""
 
     # Filtered tools for this agent type
     sub_tools = get_tools_for_agent(agent_type, base_tools)
@@ -194,7 +193,7 @@ Complete the task and return a clear, concise summary."""
             # Update progress (in-place on same line)
             elapsed = time.time() - start
             sys.stdout.write(
-                f"\r  [{agent_type}] {description} ... {tool_count} tools, {elapsed:.1f}s"
+                f"\r  [{agent_type}] {description} ... {tool_count} 个工具, {elapsed:.1f}s"
             )
             sys.stdout.flush()
 
@@ -204,7 +203,7 @@ Complete the task and return a clear, concise summary."""
     # Final progress update
     elapsed = time.time() - start
     sys.stdout.write(
-        f"\r  [{agent_type}] {description} - done ({tool_count} tools, {elapsed:.1f}s)\n"
+        f"\r  [{agent_type}] {description} - 完成 ({tool_count} 个工具, {elapsed:.1f}s)\n"
     )
 
     # Extract and return ONLY the final text
@@ -213,7 +212,7 @@ Complete the task and return a clear, concise summary."""
         if hasattr(block, "text"):
             return block.text
 
-    return "(subagent returned no text)"
+    return "(子代理未返回文本)"
 
 
 # =============================================================================

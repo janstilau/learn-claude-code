@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-s10_team_protocols.py - Team Protocols
+s10_team_protocols.py - 团队协议
 
-Shutdown protocol and plan approval protocol, both using the same
-request_id correlation pattern. Builds on s09's team messaging.
+关闭协议和计划批准协议，均使用相同的 request_id 关联模式。
+建立在 s09 的团队消息传递之上。
 
     Shutdown FSM: pending -> approved | rejected
 
@@ -43,7 +43,7 @@ request_id correlation pattern. Builds on s09's team messaging.
 
     Trackers: {request_id: {"target|from": name, "status": "pending|..."}}
 
-Key insight: "Same request_id correlation pattern, two domains."
+核心见解：“相同的 request_id 关联模式，两个领域。”
 """
 
 import json
@@ -67,7 +67,7 @@ MODEL = os.environ["MODEL_ID"]
 TEAM_DIR = WORKDIR / ".team"
 INBOX_DIR = TEAM_DIR / "inbox"
 
-SYSTEM = f"You are a team lead at {WORKDIR}. Manage teammates with shutdown and plan approval protocols."
+SYSTEM = f"你是一个位于 {WORKDIR} 的团队负责人。使用关闭和计划批准协议管理队友。"
 
 VALID_MSG_TYPES = {
     "message",
@@ -83,7 +83,7 @@ plan_requests = {}
 _tracker_lock = threading.Lock()
 
 
-# -- MessageBus: JSONL inbox per teammate --
+# -- MessageBus: 每个队友的 JSONL 收件箱 --
 class MessageBus:
     def __init__(self, inbox_dir: Path):
         self.dir = inbox_dir
@@ -92,7 +92,7 @@ class MessageBus:
     def send(self, sender: str, to: str, content: str,
              msg_type: str = "message", extra: dict = None) -> str:
         if msg_type not in VALID_MSG_TYPES:
-            return f"Error: Invalid type '{msg_type}'. Valid: {VALID_MSG_TYPES}"
+            return f"错误：无效类型 '{msg_type}'。有效类型：{VALID_MSG_TYPES}"
         msg = {
             "type": msg_type,
             "from": sender,
@@ -104,7 +104,7 @@ class MessageBus:
         inbox_path = self.dir / f"{to}.jsonl"
         with open(inbox_path, "a") as f:
             f.write(json.dumps(msg) + "\n")
-        return f"Sent {msg_type} to {to}"
+        return f"已发送 {msg_type} 给 {to}"
 
     def read_inbox(self, name: str) -> list:
         inbox_path = self.dir / f"{name}.jsonl"
@@ -123,7 +123,7 @@ class MessageBus:
             if name != sender:
                 self.send(sender, name, content, "broadcast")
                 count += 1
-        return f"Broadcast to {count} teammates"
+        return f"已广播给 {count} 个队友"
 
 
 BUS = MessageBus(INBOX_DIR)
@@ -156,7 +156,7 @@ class TeammateManager:
         member = self._find_member(name)
         if member:
             if member["status"] not in ("idle", "shutdown"):
-                return f"Error: '{name}' is currently {member['status']}"
+                return f"错误：'{name}' 当前状态为 {member['status']}"
             member["status"] = "working"
             member["role"] = role
         else:
@@ -170,13 +170,13 @@ class TeammateManager:
         )
         self.threads[name] = thread
         thread.start()
-        return f"Spawned '{name}' (role: {role})"
+        return f"已生成 '{name}' (角色: {role})"
 
     def _teammate_loop(self, name: str, role: str, prompt: str):
         sys_prompt = (
-            f"You are '{name}', role: {role}, at {WORKDIR}. "
-            f"Submit plans via plan_approval before major work. "
-            f"Respond to shutdown_request with shutdown_response."
+            f"你是 '{name}'，角色：{role}，位于 {WORKDIR}。"
+            f"在进行重大工作前通过 plan_approval 提交计划。"
+            f"使用 shutdown_response 响应 shutdown_request。"
         )
         messages = [{"role": "user", "content": prompt}]
         tools = self._teammate_tools()
@@ -242,7 +242,7 @@ class TeammateManager:
                 sender, "lead", args.get("reason", ""),
                 "shutdown_response", {"request_id": req_id, "approve": approve},
             )
-            return f"Shutdown {'approved' if approve else 'rejected'}"
+            return f"关闭已{'批准' if approve else '拒绝'}"
         if tool_name == "plan_approval":
             plan_text = args.get("plan", "")
             req_id = str(uuid.uuid4())[:8]
@@ -252,34 +252,34 @@ class TeammateManager:
                 sender, "lead", plan_text, "plan_approval_response",
                 {"request_id": req_id, "plan": plan_text},
             )
-            return f"Plan submitted (request_id={req_id}). Waiting for lead approval."
-        return f"Unknown tool: {tool_name}"
+            return f"计划已提交 (request_id={req_id})。等待负责人批准。"
+        return f"未知工具：{tool_name}"
 
     def _teammate_tools(self) -> list:
         # these base tools are unchanged from s02
         return [
-            {"name": "bash", "description": "Run a shell command.",
+            {"name": "bash", "description": "运行 shell 命令。",
              "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
-            {"name": "read_file", "description": "Read file contents.",
+            {"name": "read_file", "description": "读取文件内容。",
              "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
-            {"name": "write_file", "description": "Write content to file.",
+            {"name": "write_file", "description": "写入内容到文件。",
              "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
-            {"name": "edit_file", "description": "Replace exact text in file.",
+            {"name": "edit_file", "description": "替换文件中的确切文本。",
              "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
-            {"name": "send_message", "description": "Send message to a teammate.",
+            {"name": "send_message", "description": "向队友发送消息。",
              "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "content": {"type": "string"}, "msg_type": {"type": "string", "enum": list(VALID_MSG_TYPES)}}, "required": ["to", "content"]}},
-            {"name": "read_inbox", "description": "Read and drain your inbox.",
+            {"name": "read_inbox", "description": "读取并排空你的收件箱。",
              "input_schema": {"type": "object", "properties": {}}},
-            {"name": "shutdown_response", "description": "Respond to a shutdown request. Approve to shut down, reject to keep working.",
+            {"name": "shutdown_response", "description": "响应关闭请求。批准以关闭，拒绝以继续工作。",
              "input_schema": {"type": "object", "properties": {"request_id": {"type": "string"}, "approve": {"type": "boolean"}, "reason": {"type": "string"}}, "required": ["request_id", "approve"]}},
-            {"name": "plan_approval", "description": "Submit a plan for lead approval. Provide plan text.",
+            {"name": "plan_approval", "description": "提交计划以供负责人批准。提供计划文本。",
              "input_schema": {"type": "object", "properties": {"plan": {"type": "string"}}, "required": ["plan"]}},
         ]
 
     def list_all(self) -> str:
         if not self.config["members"]:
-            return "No teammates."
-        lines = [f"Team: {self.config['team_name']}"]
+            return "无队友。"
+        lines = [f"团队: {self.config['team_name']}"]
         for m in self.config["members"]:
             lines.append(f"  {m['name']} ({m['role']}): {m['status']}")
         return "\n".join(lines)
@@ -295,33 +295,33 @@ TEAM = TeammateManager(TEAM_DIR)
 def _safe_path(p: str) -> Path:
     path = (WORKDIR / p).resolve()
     if not path.is_relative_to(WORKDIR):
-        raise ValueError(f"Path escapes workspace: {p}")
+        raise ValueError(f"路径超出工作区范围：{p}")
     return path
 
 
 def _run_bash(command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot"]
     if any(d in command for d in dangerous):
-        return "Error: Dangerous command blocked"
+        return "错误：危险命令被拦截"
     try:
         r = subprocess.run(
             command, shell=True, cwd=WORKDIR,
             capture_output=True, text=True, timeout=120,
         )
         out = (r.stdout + r.stderr).strip()
-        return out[:50000] if out else "(no output)"
+        return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
-        return "Error: Timeout (120s)"
+        return "错误：超时 (120秒)"
 
 
 def _run_read(path: str, limit: int = None) -> str:
     try:
         lines = _safe_path(path).read_text().splitlines()
         if limit and limit < len(lines):
-            lines = lines[:limit] + [f"... ({len(lines) - limit} more)"]
+            lines = lines[:limit] + [f"... (还有 {len(lines) - limit} 行)"]
         return "\n".join(lines)[:50000]
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 
 def _run_write(path: str, content: str) -> str:
@@ -329,9 +329,9 @@ def _run_write(path: str, content: str) -> str:
         fp = _safe_path(path)
         fp.parent.mkdir(parents=True, exist_ok=True)
         fp.write_text(content)
-        return f"Wrote {len(content)} bytes"
+        return f"已写入 {len(content)} 字节"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 
 def _run_edit(path: str, old_text: str, new_text: str) -> str:
@@ -339,11 +339,11 @@ def _run_edit(path: str, old_text: str, new_text: str) -> str:
         fp = _safe_path(path)
         c = fp.read_text()
         if old_text not in c:
-            return f"Error: Text not found in {path}"
+            return f"错误：在 {path} 中未找到文本"
         fp.write_text(c.replace(old_text, new_text, 1))
-        return f"Edited {path}"
+        return f"已编辑 {path}"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 
 # -- Lead-specific protocol handlers --
@@ -355,21 +355,21 @@ def handle_shutdown_request(teammate: str) -> str:
         "lead", teammate, "Please shut down gracefully.",
         "shutdown_request", {"request_id": req_id},
     )
-    return f"Shutdown request {req_id} sent to '{teammate}' (status: pending)"
+    return f"关闭请求 {req_id} 已发送给 '{teammate}' (状态: pending)"
 
 
 def handle_plan_review(request_id: str, approve: bool, feedback: str = "") -> str:
     with _tracker_lock:
         req = plan_requests.get(request_id)
     if not req:
-        return f"Error: Unknown plan request_id '{request_id}'"
+        return f"错误：未知计划 request_id '{request_id}'"
     with _tracker_lock:
         req["status"] = "approved" if approve else "rejected"
     BUS.send(
         "lead", req["from"], feedback, "plan_approval_response",
         {"request_id": request_id, "approve": approve, "feedback": feedback},
     )
-    return f"Plan {req['status']} for '{req['from']}'"
+    return f"计划已{'批准' if approve else '拒绝'} (申请人: '{req['from']}')"
 
 
 def _check_shutdown_status(request_id: str) -> str:
@@ -395,29 +395,29 @@ TOOL_HANDLERS = {
 
 # these base tools are unchanged from s02
 TOOLS = [
-    {"name": "bash", "description": "Run a shell command.",
+    {"name": "bash", "description": "运行 shell 命令。",
      "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
-    {"name": "read_file", "description": "Read file contents.",
+    {"name": "read_file", "description": "读取文件内容。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["path"]}},
-    {"name": "write_file", "description": "Write content to file.",
+    {"name": "write_file", "description": "写入内容到文件。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
-    {"name": "edit_file", "description": "Replace exact text in file.",
+    {"name": "edit_file", "description": "替换文件中的确切文本。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
-    {"name": "spawn_teammate", "description": "Spawn a persistent teammate.",
+    {"name": "spawn_teammate", "description": "生成一个持久化队友。",
      "input_schema": {"type": "object", "properties": {"name": {"type": "string"}, "role": {"type": "string"}, "prompt": {"type": "string"}}, "required": ["name", "role", "prompt"]}},
-    {"name": "list_teammates", "description": "List all teammates.",
+    {"name": "list_teammates", "description": "列出所有队友。",
      "input_schema": {"type": "object", "properties": {}}},
-    {"name": "send_message", "description": "Send a message to a teammate.",
+    {"name": "send_message", "description": "向队友发送消息。",
      "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "content": {"type": "string"}, "msg_type": {"type": "string", "enum": list(VALID_MSG_TYPES)}}, "required": ["to", "content"]}},
-    {"name": "read_inbox", "description": "Read and drain the lead's inbox.",
+    {"name": "read_inbox", "description": "读取并排空负责人的收件箱。",
      "input_schema": {"type": "object", "properties": {}}},
-    {"name": "broadcast", "description": "Send a message to all teammates.",
+    {"name": "broadcast", "description": "向所有队友发送消息。",
      "input_schema": {"type": "object", "properties": {"content": {"type": "string"}}, "required": ["content"]}},
-    {"name": "shutdown_request", "description": "Request a teammate to shut down gracefully. Returns a request_id for tracking.",
+    {"name": "shutdown_request", "description": "请求队友优雅地关闭。返回一个用于跟踪的 request_id。",
      "input_schema": {"type": "object", "properties": {"teammate": {"type": "string"}}, "required": ["teammate"]}},
-    {"name": "shutdown_response", "description": "Check the status of a shutdown request by request_id.",
+    {"name": "shutdown_response", "description": "通过 request_id 检查关闭请求的状态。",
      "input_schema": {"type": "object", "properties": {"request_id": {"type": "string"}}, "required": ["request_id"]}},
-    {"name": "plan_approval", "description": "Approve or reject a teammate's plan. Provide request_id + approve + optional feedback.",
+    {"name": "plan_approval", "description": "批准或拒绝队友的计划。提供 request_id + approve + 可选反馈。",
      "input_schema": {"type": "object", "properties": {"request_id": {"type": "string"}, "approve": {"type": "boolean"}, "feedback": {"type": "string"}}, "required": ["request_id", "approve"]}},
 ]
 
@@ -432,7 +432,7 @@ def agent_loop(messages: list):
             })
             messages.append({
                 "role": "assistant",
-                "content": "Noted inbox messages.",
+                "content": "收到收件箱消息。",
             })
         response = client.messages.create(
             model=MODEL,
@@ -449,9 +449,9 @@ def agent_loop(messages: list):
             if block.type == "tool_use":
                 handler = TOOL_HANDLERS.get(block.name)
                 try:
-                    output = handler(**block.input) if handler else f"Unknown tool: {block.name}"
+                    output = handler(**block.input) if handler else f"未知工具：{block.name}"
                 except Exception as e:
-                    output = f"Error: {e}"
+                    output = f"错误：{e}"
                 print(f"> {block.name}: {str(output)[:200]}")
                 results.append({
                     "type": "tool_result",

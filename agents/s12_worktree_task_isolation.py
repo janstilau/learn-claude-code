@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-s12_worktree_task_isolation.py - Worktree + Task Isolation
+s12_worktree_task_isolation.py - 工作树 + 任务隔离
 
-Directory-level isolation for parallel task execution.
-Tasks are the control plane and worktrees are the execution plane.
+并行任务执行的目录级隔离。
+任务是控制平面，工作树是执行平面。
 
     .tasks/task_12.json
       {
         "id": 12,
-        "subject": "Implement auth refactor",
+        "subject": "实施身份验证重构",
         "status": "in_progress",
         "worktree": "auth-refactor"
       }
@@ -26,7 +26,7 @@ Tasks are the control plane and worktrees are the execution plane.
         ]
       }
 
-Key insight: "Isolate by directory, coordinate by task ID."
+核心洞察: "通过目录隔离，通过任务 ID 协调。"
 """
 
 import json
@@ -50,7 +50,7 @@ MODEL = os.environ["MODEL_ID"]
 
 
 def detect_repo_root(cwd: Path) -> Path | None:
-    """Return git repo root if cwd is inside a repo, else None."""
+    """如果 cwd 在仓库内，则返回 git 仓库根目录，否则返回 None。"""
     try:
         r = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -70,15 +70,15 @@ def detect_repo_root(cwd: Path) -> Path | None:
 REPO_ROOT = detect_repo_root(WORKDIR) or WORKDIR
 
 SYSTEM = (
-    f"You are a coding agent at {WORKDIR}. "
-    "Use task + worktree tools for multi-task work. "
-    "For parallel or risky changes: create tasks, allocate worktree lanes, "
-    "run commands in those lanes, then choose keep/remove for closeout. "
-    "Use worktree_events when you need lifecycle visibility."
+    f"你是位于 {WORKDIR} 的编码代理。"
+    "使用任务 + 工作树工具进行多任务工作。"
+    "对于并行或有风险的更改：创建任务，分配工作树通道，"
+    "在这些通道中运行命令，然后在收尾时选择保留/删除。"
+    "当你需要生命周期可见性时使用 worktree_events。"
 )
 
 
-# -- EventBus: append-only lifecycle events for observability --
+# -- EventBus: 仅追加的生命周期事件，用于可观察性 --
 class EventBus:
     def __init__(self, event_log_path: Path):
         self.path = event_log_path
@@ -117,7 +117,7 @@ class EventBus:
         return json.dumps(items, indent=2)
 
 
-# -- TaskManager: persistent task board with optional worktree binding --
+# -- TaskManager: 带有可选工作树绑定的持久任务板 --
 class TaskManager:
     def __init__(self, tasks_dir: Path):
         self.dir = tasks_dir
@@ -139,7 +139,7 @@ class TaskManager:
     def _load(self, task_id: int) -> dict:
         path = self._path(task_id)
         if not path.exists():
-            raise ValueError(f"Task {task_id} not found")
+            raise ValueError(f"任务 {task_id} 未找到")
         return json.loads(path.read_text())
 
     def _save(self, task: dict):
@@ -171,7 +171,7 @@ class TaskManager:
         task = self._load(task_id)
         if status:
             if status not in ("pending", "in_progress", "completed"):
-                raise ValueError(f"Invalid status: {status}")
+                raise ValueError(f"无效状态: {status}")
             task["status"] = status
         if owner is not None:
             task["owner"] = owner
@@ -202,7 +202,7 @@ class TaskManager:
         for f in sorted(self.dir.glob("task_*.json")):
             tasks.append(json.loads(f.read_text()))
         if not tasks:
-            return "No tasks."
+            return "无任务。"
         lines = []
         for t in tasks:
             marker = {
@@ -220,7 +220,7 @@ TASKS = TaskManager(REPO_ROOT / ".tasks")
 EVENTS = EventBus(REPO_ROOT / ".worktrees" / "events.jsonl")
 
 
-# -- WorktreeManager: create/list/run/remove git worktrees + lifecycle index --
+# -- WorktreeManager: 创建/列出/运行/移除 git worktrees + 生命周期索引 --
 class WorktreeManager:
     def __init__(self, repo_root: Path, tasks: TaskManager, events: EventBus):
         self.repo_root = repo_root
@@ -248,7 +248,7 @@ class WorktreeManager:
 
     def _run_git(self, args: list[str]) -> str:
         if not self.git_available:
-            raise RuntimeError("Not in a git repository. worktree tools require git.")
+            raise RuntimeError("不在 git 仓库中。worktree 工具需要 git。")
         r = subprocess.run(
             ["git", *args],
             cwd=self.repo_root,
@@ -258,8 +258,8 @@ class WorktreeManager:
         )
         if r.returncode != 0:
             msg = (r.stdout + r.stderr).strip()
-            raise RuntimeError(msg or f"git {' '.join(args)} failed")
-        return (r.stdout + r.stderr).strip() or "(no output)"
+            raise RuntimeError(msg or f"git {' '.join(args)} 失败")
+        return (r.stdout + r.stderr).strip() or "(无输出)"
 
     def _load_index(self) -> dict:
         return json.loads(self.index_path.read_text())
@@ -277,15 +277,15 @@ class WorktreeManager:
     def _validate_name(self, name: str):
         if not re.fullmatch(r"[A-Za-z0-9._-]{1,40}", name or ""):
             raise ValueError(
-                "Invalid worktree name. Use 1-40 chars: letters, numbers, ., _, -"
+                "无效的工作树名称。使用 1-40 个字符: 字母, 数字, ., _, -"
             )
 
     def create(self, name: str, task_id: int = None, base_ref: str = "HEAD") -> str:
         self._validate_name(name)
         if self._find(name):
-            raise ValueError(f"Worktree '{name}' already exists in index")
+            raise ValueError(f"工作树 '{name}' 已存在于索引中")
         if task_id is not None and not self.tasks.exists(task_id):
-            raise ValueError(f"Task {task_id} not found")
+            raise ValueError(f"任务 {task_id} 未找到")
 
         path = self.dir / name
         branch = f"wt/{name}"
@@ -337,7 +337,7 @@ class WorktreeManager:
         idx = self._load_index()
         wts = idx.get("worktrees", [])
         if not wts:
-            return "No worktrees in index."
+            return "索引中无工作树。"
         lines = []
         for wt in wts:
             suffix = f" task={wt['task_id']}" if wt.get("task_id") else ""
@@ -350,10 +350,10 @@ class WorktreeManager:
     def status(self, name: str) -> str:
         wt = self._find(name)
         if not wt:
-            return f"Error: Unknown worktree '{name}'"
+            return f"错误: 未知工作树 '{name}'"
         path = Path(wt["path"])
         if not path.exists():
-            return f"Error: Worktree path missing: {path}"
+            return f"错误: 工作树路径丢失: {path}"
         r = subprocess.run(
             ["git", "status", "--short", "--branch"],
             cwd=path,
@@ -362,19 +362,19 @@ class WorktreeManager:
             timeout=60,
         )
         text = (r.stdout + r.stderr).strip()
-        return text or "Clean worktree"
+        return text or "干净的工作树"
 
     def run(self, name: str, command: str) -> str:
         dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
         if any(d in command for d in dangerous):
-            return "Error: Dangerous command blocked"
+            return "错误: 危险命令已阻止"
 
         wt = self._find(name)
         if not wt:
-            return f"Error: Unknown worktree '{name}'"
+            return f"错误: 未知工作树 '{name}'"
         path = Path(wt["path"])
         if not path.exists():
-            return f"Error: Worktree path missing: {path}"
+            return f"错误: 工作树路径丢失: {path}"
 
         try:
             r = subprocess.run(
@@ -386,14 +386,14 @@ class WorktreeManager:
                 timeout=300,
             )
             out = (r.stdout + r.stderr).strip()
-            return out[:50000] if out else "(no output)"
+            return out[:50000] if out else "(无输出)"
         except subprocess.TimeoutExpired:
-            return "Error: Timeout (300s)"
+            return "错误: 超时 (300s)"
 
     def remove(self, name: str, force: bool = False, complete_task: bool = False) -> str:
         wt = self._find(name)
         if not wt:
-            return f"Error: Unknown worktree '{name}'"
+            return f"错误: 未知工作树 '{name}'"
 
         self.events.emit(
             "worktree.remove.before",
@@ -434,7 +434,7 @@ class WorktreeManager:
                 task={"id": wt.get("task_id")} if wt.get("task_id") is not None else {},
                 worktree={"name": name, "path": wt.get("path"), "status": "removed"},
             )
-            return f"Removed worktree '{name}'"
+            return f"已移除工作树 '{name}'"
         except Exception as e:
             self.events.emit(
                 "worktree.remove.failed",
@@ -447,7 +447,7 @@ class WorktreeManager:
     def keep(self, name: str) -> str:
         wt = self._find(name)
         if not wt:
-            return f"Error: Unknown worktree '{name}'"
+            return f"错误: 未知工作树 '{name}'"
 
         idx = self._load_index()
         kept = None
@@ -467,24 +467,24 @@ class WorktreeManager:
                 "status": "kept",
             },
         )
-        return json.dumps(kept, indent=2) if kept else f"Error: Unknown worktree '{name}'"
+        return json.dumps(kept, indent=2) if kept else f"错误: 未知工作树 '{name}'"
 
 
 WORKTREES = WorktreeManager(REPO_ROOT, TASKS, EVENTS)
 
 
-# -- Base tools (kept minimal, same style as previous sessions) --
+# -- 基础工具 (保持极简，与之前的会话风格一致) --
 def safe_path(p: str) -> Path:
     path = (WORKDIR / p).resolve()
     if not path.is_relative_to(WORKDIR):
-        raise ValueError(f"Path escapes workspace: {p}")
+        raise ValueError(f"路径超出工作区范围: {p}")
     return path
 
 
 def run_bash(command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
     if any(d in command for d in dangerous):
-        return "Error: Dangerous command blocked"
+        return "错误: 危险命令已阻止"
     try:
         r = subprocess.run(
             command,
@@ -495,19 +495,19 @@ def run_bash(command: str) -> str:
             timeout=120,
         )
         out = (r.stdout + r.stderr).strip()
-        return out[:50000] if out else "(no output)"
+        return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
-        return "Error: Timeout (120s)"
+        return "错误: 超时 (120s)"
 
 
 def run_read(path: str, limit: int = None) -> str:
     try:
         lines = safe_path(path).read_text().splitlines()
         if limit and limit < len(lines):
-            lines = lines[:limit] + [f"... ({len(lines) - limit} more)"]
+            lines = lines[:limit] + [f"... (还有 {len(lines) - limit} 行)"]
         return "\n".join(lines)[:50000]
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误: {e}"
 
 
 def run_write(path: str, content: str) -> str:
@@ -515,9 +515,9 @@ def run_write(path: str, content: str) -> str:
         fp = safe_path(path)
         fp.parent.mkdir(parents=True, exist_ok=True)
         fp.write_text(content)
-        return f"Wrote {len(content)} bytes"
+        return f"写入了 {len(content)} 字节"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误: {e}"
 
 
 def run_edit(path: str, old_text: str, new_text: str) -> str:
@@ -525,11 +525,11 @@ def run_edit(path: str, old_text: str, new_text: str) -> str:
         fp = safe_path(path)
         c = fp.read_text()
         if old_text not in c:
-            return f"Error: Text not found in {path}"
+            return f"错误: 在 {path} 中未找到文本"
         fp.write_text(c.replace(old_text, new_text, 1))
-        return f"Edited {path}"
+        return f"已编辑 {path}"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误: {e}"
 
 
 TOOL_HANDLERS = {
@@ -554,7 +554,7 @@ TOOL_HANDLERS = {
 TOOLS = [
     {
         "name": "bash",
-        "description": "Run a shell command in the current workspace (blocking).",
+        "description": "在当前工作区运行 Shell 命令 (阻塞)。",
         "input_schema": {
             "type": "object",
             "properties": {"command": {"type": "string"}},
@@ -563,7 +563,7 @@ TOOLS = [
     },
     {
         "name": "read_file",
-        "description": "Read file contents.",
+        "description": "读取文件内容。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -575,7 +575,7 @@ TOOLS = [
     },
     {
         "name": "write_file",
-        "description": "Write content to file.",
+        "description": "将内容写入文件。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -587,7 +587,7 @@ TOOLS = [
     },
     {
         "name": "edit_file",
-        "description": "Replace exact text in file.",
+        "description": "替换文件中的确切文本。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -600,7 +600,7 @@ TOOLS = [
     },
     {
         "name": "task_create",
-        "description": "Create a new task on the shared task board.",
+        "description": "在共享任务板上创建一个新任务。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -612,12 +612,12 @@ TOOLS = [
     },
     {
         "name": "task_list",
-        "description": "List all tasks with status, owner, and worktree binding.",
+        "description": "列出所有任务及其状态、所有者和工作树绑定。",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "task_get",
-        "description": "Get task details by ID.",
+        "description": "通过 ID 获取任务详情。",
         "input_schema": {
             "type": "object",
             "properties": {"task_id": {"type": "integer"}},
@@ -626,7 +626,7 @@ TOOLS = [
     },
     {
         "name": "task_update",
-        "description": "Update task status or owner.",
+        "description": "更新任务状态或所有者。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -642,7 +642,7 @@ TOOLS = [
     },
     {
         "name": "task_bind_worktree",
-        "description": "Bind a task to a worktree name.",
+        "description": "将任务绑定到工作树名称。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -655,7 +655,7 @@ TOOLS = [
     },
     {
         "name": "worktree_create",
-        "description": "Create a git worktree and optionally bind it to a task.",
+        "description": "创建一个 git worktree 并可选择将其绑定到任务。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -668,12 +668,12 @@ TOOLS = [
     },
     {
         "name": "worktree_list",
-        "description": "List worktrees tracked in .worktrees/index.json.",
+        "description": "列出 .worktrees/index.json 中跟踪的工作树。",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "worktree_status",
-        "description": "Show git status for one worktree.",
+        "description": "显示一个工作树的 git 状态。",
         "input_schema": {
             "type": "object",
             "properties": {"name": {"type": "string"}},
@@ -682,7 +682,7 @@ TOOLS = [
     },
     {
         "name": "worktree_run",
-        "description": "Run a shell command in a named worktree directory.",
+        "description": "在指定的工作树目录中运行 Shell 命令。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -694,7 +694,7 @@ TOOLS = [
     },
     {
         "name": "worktree_remove",
-        "description": "Remove a worktree and optionally mark its bound task completed.",
+        "description": "移除工作树并可选择将绑定的任务标记为完成。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -707,7 +707,7 @@ TOOLS = [
     },
     {
         "name": "worktree_keep",
-        "description": "Mark a worktree as kept in lifecycle state without removing it.",
+        "description": "将工作树标记为保留状态而不移除它。",
         "input_schema": {
             "type": "object",
             "properties": {"name": {"type": "string"}},
@@ -716,7 +716,7 @@ TOOLS = [
     },
     {
         "name": "worktree_events",
-        "description": "List recent worktree/task lifecycle events from .worktrees/events.jsonl.",
+        "description": "列出 .worktrees/events.jsonl 中最近的工作树/任务生命周期事件。",
         "input_schema": {
             "type": "object",
             "properties": {"limit": {"type": "integer"}},
@@ -743,9 +743,9 @@ def agent_loop(messages: list):
             if block.type == "tool_use":
                 handler = TOOL_HANDLERS.get(block.name)
                 try:
-                    output = handler(**block.input) if handler else f"Unknown tool: {block.name}"
+                    output = handler(**block.input) if handler else f"未知工具: {block.name}"
                 except Exception as e:
-                    output = f"Error: {e}"
+                    output = f"错误: {e}"
                 print(f"> {block.name}: {str(output)[:200]}")
                 results.append(
                     {
@@ -758,9 +758,9 @@ def agent_loop(messages: list):
 
 
 if __name__ == "__main__":
-    print(f"Repo root for s12: {REPO_ROOT}")
+    print(f"s12 的仓库根目录: {REPO_ROOT}")
     if not WORKTREES.git_available:
-        print("Note: Not in a git repo. worktree_* tools will return errors.")
+        print("注意: 不在 git 仓库中。worktree_* 工具将返回错误。")
 
     history = []
     while True:

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-s01_agent_loop.py - The Agent Loop
+s01_agent_loop.py - Agent 循环
 
-The entire secret of an AI coding agent in one pattern:
+AI 编码代理的核心秘密就在这一个模式中：
 
     while stop_reason == "tool_use":
         response = LLM(messages, tools)
@@ -18,9 +18,9 @@ The entire secret of an AI coding agent in one pattern:
                           +---------------+
                           (loop continues)
 
-This is the core loop: feed tool results back to the model
-until the model decides to stop. Production agents layer
-policy, hooks, and lifecycle controls on top.
+这是核心循环：将工具结果反馈给模型，
+直到模型决定停止。生产级代理在此基础上
+叠加了策略、钩子和生命周期控制。
 """
 
 import os
@@ -37,11 +37,11 @@ if os.getenv("ANTHROPIC_BASE_URL"):
 client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
 MODEL = os.environ["MODEL_ID"]
 
-SYSTEM = f"You are a coding agent at {os.getcwd()}. Use bash to solve tasks. Act, don't explain."
+SYSTEM = f"你是一个位于 {os.getcwd()} 的编码代理。使用 bash 来解决任务。直接行动，不要解释。"
 
 TOOLS = [{
     "name": "bash",
-    "description": "Run a shell command.",
+    "description": "运行 shell 命令。",
     "input_schema": {
         "type": "object",
         "properties": {"command": {"type": "string"}},
@@ -53,31 +53,31 @@ TOOLS = [{
 def run_bash(command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
     if any(d in command for d in dangerous):
-        return "Error: Dangerous command blocked"
+        return "错误：危险命令被拦截"
     try:
         r = subprocess.run(command, shell=True, cwd=os.getcwd(),
                            capture_output=True, text=True, timeout=120)
         out = (r.stdout + r.stderr).strip()
-        return out[:50000] if out else "(no output)"
+        return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
-        return "Error: Timeout (120s)"
+        return "错误：超时 (120秒)"
 
 
-# -- The core pattern: a while loop that calls tools until the model stops --
+# -- 核心模式：一个 while 循环调用工具直到模型停止 --
 def agent_loop(messages: list):
     while True:
         response = client.messages.create(
             model=MODEL, system=SYSTEM, messages=messages,
             tools=TOOLS, max_tokens=8000,
         )
-        # Append assistant turn (convert Pydantic objects to dicts)
+        # 追加助手回合（将 Pydantic 对象转换为字典）
         messages.append({"role": "assistant", "content": [
             block.model_dump() for block in response.content
         ]})
-        # If the model didn't call a tool, we're done
+        # 如果模型没有调用工具，我们就完成了
         if response.stop_reason != "tool_use":
             return
-        # Execute each tool call, collect results
+        # 执行每个工具调用，收集结果
         results = []
         for block in response.content:
             if block.type == "tool_use":

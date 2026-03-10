@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-s05_skill_loading.py - Skills
+s05_skill_loading.py - 技能加载
 
-Two-layer skill injection that avoids bloating the system prompt:
+双层技能注入，避免系统提示词过于臃肿：
 
     Layer 1 (cheap): skill names in system prompt (~100 tokens/skill)
     Layer 2 (on demand): full skill body in tool_result
@@ -31,7 +31,7 @@ Two-layer skill injection that avoids bloating the system prompt:
     | </skill>                             |
     +--------------------------------------+
 
-Key insight: "Don't put everything in the system prompt. Load on demand."
+核心见解：“不要把所有东西都放在系统提示词中。按需加载。”
 """
 
 import os
@@ -53,7 +53,7 @@ MODEL = os.environ["MODEL_ID"]
 SKILLS_DIR = WORKDIR / "skills"
 
 
-# -- SkillLoader: scan skills/<name>/SKILL.md with YAML frontmatter --
+# -- SkillLoader: 扫描 skills/<name>/SKILL.md 并解析 YAML frontmatter --
 class SkillLoader:
     def __init__(self, skills_dir: Path):
         self.skills_dir = skills_dir
@@ -84,10 +84,10 @@ class SkillLoader:
     def get_descriptions(self) -> str:
         """Layer 1: short descriptions for the system prompt."""
         if not self.skills:
-            return "(no skills available)"
+            return "(无可用技能)"
         lines = []
         for name, skill in self.skills.items():
-            desc = skill["meta"].get("description", "No description")
+            desc = skill["meta"].get("description", "无描述")
             tags = skill["meta"].get("tags", "")
             line = f"  - {name}: {desc}"
             if tags:
@@ -99,67 +99,67 @@ class SkillLoader:
         """Layer 2: full skill body returned in tool_result."""
         skill = self.skills.get(name)
         if not skill:
-            return f"Error: Unknown skill '{name}'. Available: {', '.join(self.skills.keys())}"
+            return f"错误：未知技能 '{name}'。可用技能：{', '.join(self.skills.keys())}"
         return f"<skill name=\"{name}\">\n{skill['body']}\n</skill>"
 
 
 SKILL_LOADER = SkillLoader(SKILLS_DIR)
 
 # Layer 1: skill metadata injected into system prompt
-SYSTEM = f"""You are a coding agent at {WORKDIR}.
-Use load_skill to access specialized knowledge before tackling unfamiliar topics.
+SYSTEM = f"""你是一个位于 {WORKDIR} 的编码代理。
+在处理不熟悉的主题之前，使用 load_skill 来获取专业知识。
 
-Skills available:
+可用技能：
 {SKILL_LOADER.get_descriptions()}"""
 
 
-# -- Tool implementations --
+# -- 工具实现 --
 def safe_path(p: str) -> Path:
     path = (WORKDIR / p).resolve()
     if not path.is_relative_to(WORKDIR):
-        raise ValueError(f"Path escapes workspace: {p}")
+        raise ValueError(f"路径超出工作区范围：{p}")
     return path
 
 def run_bash(command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
     if any(d in command for d in dangerous):
-        return "Error: Dangerous command blocked"
+        return "错误：危险命令被拦截"
     try:
         r = subprocess.run(command, shell=True, cwd=WORKDIR,
                            capture_output=True, text=True, timeout=120)
         out = (r.stdout + r.stderr).strip()
-        return out[:50000] if out else "(no output)"
+        return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
-        return "Error: Timeout (120s)"
+        return "错误：超时 (120秒)"
 
 def run_read(path: str, limit: int = None) -> str:
     try:
         lines = safe_path(path).read_text().splitlines()
         if limit and limit < len(lines):
-            lines = lines[:limit] + [f"... ({len(lines) - limit} more)"]
+            lines = lines[:limit] + [f"... (还有 {len(lines) - limit} 行)"]
         return "\n".join(lines)[:50000]
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 def run_write(path: str, content: str) -> str:
     try:
         fp = safe_path(path)
         fp.parent.mkdir(parents=True, exist_ok=True)
         fp.write_text(content)
-        return f"Wrote {len(content)} bytes"
+        return f"已写入 {len(content)} 字节"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 def run_edit(path: str, old_text: str, new_text: str) -> str:
     try:
         fp = safe_path(path)
         content = fp.read_text()
         if old_text not in content:
-            return f"Error: Text not found in {path}"
+            return f"错误：在 {path} 中未找到文本"
         fp.write_text(content.replace(old_text, new_text, 1))
-        return f"Edited {path}"
+        return f"已编辑 {path}"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 
 TOOL_HANDLERS = {
@@ -171,16 +171,16 @@ TOOL_HANDLERS = {
 }
 
 TOOLS = [
-    {"name": "bash", "description": "Run a shell command.",
+    {"name": "bash", "description": "运行 shell 命令。",
      "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
-    {"name": "read_file", "description": "Read file contents.",
+    {"name": "read_file", "description": "读取文件内容。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["path"]}},
-    {"name": "write_file", "description": "Write content to file.",
+    {"name": "write_file", "description": "写入内容到文件。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
-    {"name": "edit_file", "description": "Replace exact text in file.",
+    {"name": "edit_file", "description": "替换文件中的确切文本。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
-    {"name": "load_skill", "description": "Load specialized knowledge by name.",
-     "input_schema": {"type": "object", "properties": {"name": {"type": "string", "description": "Skill name to load"}}, "required": ["name"]}},
+    {"name": "load_skill", "description": "按名称加载专业知识。",
+     "input_schema": {"type": "object", "properties": {"name": {"type": "string", "description": "要加载的技能名称"}}, "required": ["name"]}},
 ]
 
 
@@ -198,9 +198,9 @@ def agent_loop(messages: list):
             if block.type == "tool_use":
                 handler = TOOL_HANDLERS.get(block.name)
                 try:
-                    output = handler(**block.input) if handler else f"Unknown tool: {block.name}"
+                    output = handler(**block.input) if handler else f"未知工具：{block.name}"
                 except Exception as e:
-                    output = f"Error: {e}"
+                    output = f"错误：{e}"
                 print(f"> {block.name}: {str(output)[:200]}")
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(output)})
         messages.append({"role": "user", "content": results})

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-s08_background_tasks.py - Background Tasks
+s08_background_tasks.py - 后台任务
 
-Run commands in background threads. A notification queue is drained
-before each LLM call to deliver results.
+在后台线程中运行命令。在每次 LLM 调用之前，
+会排空通知队列以传递结果。
 
     Main thread                Background thread
     +-----------------+        +-----------------+
@@ -21,7 +21,7 @@ before each LLM call to deliver results.
                  |              |
                  +-- notification queue --> [results injected]
 
-Key insight: "Fire and forget -- the agent doesn't block while the command runs."
+核心见解：“发射后不管——代理在命令运行时不会阻塞。”
 """
 
 import os
@@ -42,10 +42,10 @@ WORKDIR = Path.cwd()
 client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
 MODEL = os.environ["MODEL_ID"]
 
-SYSTEM = f"You are a coding agent at {WORKDIR}. Use background_run for long-running commands."
+SYSTEM = f"你是一个位于 {WORKDIR} 的编码代理。使用 background_run 来运行长时间运行的命令。"
 
 
-# -- BackgroundManager: threaded execution + notification queue --
+# -- BackgroundManager: 线程执行 + 通知队列 --
 class BackgroundManager:
     def __init__(self):
         self.tasks = {}  # task_id -> {status, result, command}
@@ -60,7 +60,7 @@ class BackgroundManager:
             target=self._execute, args=(task_id, command), daemon=True
         )
         thread.start()
-        return f"Background task {task_id} started: {command[:80]}"
+        return f"后台任务 {task_id} 已启动：{command[:80]}"
 
     def _execute(self, task_id: str, command: str):
         """Thread target: run subprocess, capture output, push to queue."""
@@ -72,19 +72,19 @@ class BackgroundManager:
             output = (r.stdout + r.stderr).strip()[:50000]
             status = "completed"
         except subprocess.TimeoutExpired:
-            output = "Error: Timeout (300s)"
+            output = "错误：超时 (300秒)"
             status = "timeout"
         except Exception as e:
-            output = f"Error: {e}"
+            output = f"错误：{e}"
             status = "error"
         self.tasks[task_id]["status"] = status
-        self.tasks[task_id]["result"] = output or "(no output)"
+        self.tasks[task_id]["result"] = output or "(无输出)"
         with self._lock:
             self._notification_queue.append({
                 "task_id": task_id,
                 "status": status,
                 "command": command[:80],
-                "result": (output or "(no output)")[:500],
+                "result": (output or "(无输出)")[:500],
             })
 
     def check(self, task_id: str = None) -> str:
@@ -92,12 +92,12 @@ class BackgroundManager:
         if task_id:
             t = self.tasks.get(task_id)
             if not t:
-                return f"Error: Unknown task {task_id}"
-            return f"[{t['status']}] {t['command'][:60]}\n{t.get('result') or '(running)'}"
+                return f"错误：未知任务 {task_id}"
+            return f"[{t['status']}] {t['command'][:60]}\n{t.get('result') or '(运行中)'}"
         lines = []
         for tid, t in self.tasks.items():
             lines.append(f"{tid}: [{t['status']}] {t['command'][:60]}")
-        return "\n".join(lines) if lines else "No background tasks."
+        return "\n".join(lines) if lines else "无后台任务。"
 
     def drain_notifications(self) -> list:
         """Return and clear all pending completion notifications."""
@@ -110,53 +110,53 @@ class BackgroundManager:
 BG = BackgroundManager()
 
 
-# -- Tool implementations --
+# -- 工具实现 --
 def safe_path(p: str) -> Path:
     path = (WORKDIR / p).resolve()
     if not path.is_relative_to(WORKDIR):
-        raise ValueError(f"Path escapes workspace: {p}")
+        raise ValueError(f"路径超出工作区范围：{p}")
     return path
 
 def run_bash(command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
     if any(d in command for d in dangerous):
-        return "Error: Dangerous command blocked"
+        return "错误：危险命令被拦截"
     try:
         r = subprocess.run(command, shell=True, cwd=WORKDIR,
                            capture_output=True, text=True, timeout=120)
         out = (r.stdout + r.stderr).strip()
-        return out[:50000] if out else "(no output)"
+        return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
-        return "Error: Timeout (120s)"
+        return "错误：超时 (120秒)"
 
 def run_read(path: str, limit: int = None) -> str:
     try:
         lines = safe_path(path).read_text().splitlines()
         if limit and limit < len(lines):
-            lines = lines[:limit] + [f"... ({len(lines) - limit} more)"]
+            lines = lines[:limit] + [f"... (还有 {len(lines) - limit} 行)"]
         return "\n".join(lines)[:50000]
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 def run_write(path: str, content: str) -> str:
     try:
         fp = safe_path(path)
         fp.parent.mkdir(parents=True, exist_ok=True)
         fp.write_text(content)
-        return f"Wrote {len(content)} bytes"
+        return f"已写入 {len(content)} 字节"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 def run_edit(path: str, old_text: str, new_text: str) -> str:
     try:
         fp = safe_path(path)
         c = fp.read_text()
         if old_text not in c:
-            return f"Error: Text not found in {path}"
+            return f"错误：在 {path} 中未找到文本"
         fp.write_text(c.replace(old_text, new_text, 1))
-        return f"Edited {path}"
+        return f"已编辑 {path}"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 
 TOOL_HANDLERS = {
@@ -169,17 +169,17 @@ TOOL_HANDLERS = {
 }
 
 TOOLS = [
-    {"name": "bash", "description": "Run a shell command (blocking).",
+    {"name": "bash", "description": "运行 shell 命令 (阻塞)。",
      "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
-    {"name": "read_file", "description": "Read file contents.",
+    {"name": "read_file", "description": "读取文件内容。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["path"]}},
-    {"name": "write_file", "description": "Write content to file.",
+    {"name": "write_file", "description": "写入内容到文件。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
-    {"name": "edit_file", "description": "Replace exact text in file.",
+    {"name": "edit_file", "description": "替换文件中的确切文本。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
-    {"name": "background_run", "description": "Run command in background thread. Returns task_id immediately.",
+    {"name": "background_run", "description": "在后台线程中运行命令。立即返回 task_id。",
      "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
-    {"name": "check_background", "description": "Check background task status. Omit task_id to list all.",
+    {"name": "check_background", "description": "检查后台任务状态。省略 task_id 以列出所有。",
      "input_schema": {"type": "object", "properties": {"task_id": {"type": "string"}}}},
 ]
 
@@ -193,7 +193,7 @@ def agent_loop(messages: list):
                 f"[bg:{n['task_id']}] {n['status']}: {n['result']}" for n in notifs
             )
             messages.append({"role": "user", "content": f"<background-results>\n{notif_text}\n</background-results>"})
-            messages.append({"role": "assistant", "content": "Noted background results."})
+            messages.append({"role": "assistant", "content": "收到后台结果。"})
         response = client.messages.create(
             model=MODEL, system=SYSTEM, messages=messages,
             tools=TOOLS, max_tokens=8000,
@@ -206,9 +206,9 @@ def agent_loop(messages: list):
             if block.type == "tool_use":
                 handler = TOOL_HANDLERS.get(block.name)
                 try:
-                    output = handler(**block.input) if handler else f"Unknown tool: {block.name}"
+                    output = handler(**block.input) if handler else f"未知工具：{block.name}"
                 except Exception as e:
-                    output = f"Error: {e}"
+                    output = f"错误：{e}"
                 print(f"> {block.name}: {str(output)[:200]}")
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(output)})
         messages.append({"role": "user", "content": results})

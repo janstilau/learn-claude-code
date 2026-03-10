@@ -1,2 +1,2 @@
-# agents/ - Python teaching agents (s01-s12) + reference agent (s_full)
-# Each file is self-contained and runnable: python agents/s01_agent_loop.py
+# agents/ - Python 教学代理 (s01-s12) + 参考代理 (s_full)
+# 每个文件都是独立且可运行的: python agents/s01_agent_loop.py

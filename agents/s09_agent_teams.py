@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-s09_agent_teams.py - Agent Teams
+s09_agent_teams.py - 代理团队
 
-Persistent named agents with file-based JSONL inboxes. Each teammate runs
-its own agent loop in a separate thread. Communication via append-only inboxes.
+持久化的命名代理，带有基于文件的 JSONL 收件箱。每个队友在单独的线程中
+运行自己的代理循环。通过仅追加的收件箱进行通信。
 
     Subagent (s04):  spawn -> execute -> return summary -> destroyed
     Teammate (s09):  spawn -> work -> idle -> work -> ... -> shutdown
@@ -39,7 +39,7 @@ its own agent loop in a separate thread. Communication via append-only inboxes.
     | plan_approval_response  | Approve/reject plan (s10)         |
     +-------------------------+-----------------------------------+
 
-Key insight: "Teammates that can talk to each other."
+核心见解：“能够相互交谈的队友。”
 """
 
 import json
@@ -62,7 +62,7 @@ MODEL = os.environ["MODEL_ID"]
 TEAM_DIR = WORKDIR / ".team"
 INBOX_DIR = TEAM_DIR / "inbox"
 
-SYSTEM = f"You are a team lead at {WORKDIR}. Spawn teammates and communicate via inboxes."
+SYSTEM = f"你是一个位于 {WORKDIR} 的团队负责人。生成队友并通过收件箱进行沟通。"
 
 VALID_MSG_TYPES = {
     "message",
@@ -73,7 +73,7 @@ VALID_MSG_TYPES = {
 }
 
 
-# -- MessageBus: JSONL inbox per teammate --
+# -- MessageBus: 每个队友的 JSONL 收件箱 --
 class MessageBus:
     def __init__(self, inbox_dir: Path):
         self.dir = inbox_dir
@@ -82,7 +82,7 @@ class MessageBus:
     def send(self, sender: str, to: str, content: str,
              msg_type: str = "message", extra: dict = None) -> str:
         if msg_type not in VALID_MSG_TYPES:
-            return f"Error: Invalid type '{msg_type}'. Valid: {VALID_MSG_TYPES}"
+            return f"错误：无效类型 '{msg_type}'。有效类型：{VALID_MSG_TYPES}"
         msg = {
             "type": msg_type,
             "from": sender,
@@ -94,7 +94,7 @@ class MessageBus:
         inbox_path = self.dir / f"{to}.jsonl"
         with open(inbox_path, "a") as f:
             f.write(json.dumps(msg) + "\n")
-        return f"Sent {msg_type} to {to}"
+        return f"已发送 {msg_type} 给 {to}"
 
     def read_inbox(self, name: str) -> list:
         inbox_path = self.dir / f"{name}.jsonl"
@@ -113,13 +113,13 @@ class MessageBus:
             if name != sender:
                 self.send(sender, name, content, "broadcast")
                 count += 1
-        return f"Broadcast to {count} teammates"
+        return f"已广播给 {count} 个队友"
 
 
 BUS = MessageBus(INBOX_DIR)
 
 
-# -- TeammateManager: persistent named agents with config.json --
+# -- TeammateManager: 带有 config.json 的持久化命名代理 --
 class TeammateManager:
     def __init__(self, team_dir: Path):
         self.dir = team_dir
@@ -146,7 +146,7 @@ class TeammateManager:
         member = self._find_member(name)
         if member:
             if member["status"] not in ("idle", "shutdown"):
-                return f"Error: '{name}' is currently {member['status']}"
+                return f"错误：'{name}' 当前状态为 {member['status']}"
             member["status"] = "working"
             member["role"] = role
         else:
@@ -160,12 +160,12 @@ class TeammateManager:
         )
         self.threads[name] = thread
         thread.start()
-        return f"Spawned '{name}' (role: {role})"
+        return f"已生成 '{name}' (角色: {role})"
 
     def _teammate_loop(self, name: str, role: str, prompt: str):
         sys_prompt = (
-            f"You are '{name}', role: {role}, at {WORKDIR}. "
-            f"Use send_message to communicate. Complete your task."
+            f"你是 '{name}'，角色：{role}，位于 {WORKDIR}。"
+            f"使用 send_message 进行沟通。完成你的任务。"
         )
         messages = [{"role": "user", "content": prompt}]
         tools = self._teammate_tools()
@@ -216,29 +216,29 @@ class TeammateManager:
             return BUS.send(sender, args["to"], args["content"], args.get("msg_type", "message"))
         if tool_name == "read_inbox":
             return json.dumps(BUS.read_inbox(sender), indent=2)
-        return f"Unknown tool: {tool_name}"
+        return f"未知工具：{tool_name}"
 
     def _teammate_tools(self) -> list:
         # these base tools are unchanged from s02
         return [
-            {"name": "bash", "description": "Run a shell command.",
+            {"name": "bash", "description": "运行 shell 命令。",
              "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
-            {"name": "read_file", "description": "Read file contents.",
+            {"name": "read_file", "description": "读取文件内容。",
              "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
-            {"name": "write_file", "description": "Write content to file.",
+            {"name": "write_file", "description": "写入内容到文件。",
              "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
-            {"name": "edit_file", "description": "Replace exact text in file.",
+            {"name": "edit_file", "description": "替换文件中的确切文本。",
              "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
-            {"name": "send_message", "description": "Send message to a teammate.",
+            {"name": "send_message", "description": "向队友发送消息。",
              "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "content": {"type": "string"}, "msg_type": {"type": "string", "enum": list(VALID_MSG_TYPES)}}, "required": ["to", "content"]}},
-            {"name": "read_inbox", "description": "Read and drain your inbox.",
+            {"name": "read_inbox", "description": "读取并排空你的收件箱。",
              "input_schema": {"type": "object", "properties": {}}},
         ]
 
     def list_all(self) -> str:
         if not self.config["members"]:
-            return "No teammates."
-        lines = [f"Team: {self.config['team_name']}"]
+            return "无队友。"
+        lines = [f"团队: {self.config['team_name']}"]
         for m in self.config["members"]:
             lines.append(f"  {m['name']} ({m['role']}): {m['status']}")
         return "\n".join(lines)
@@ -250,37 +250,37 @@ class TeammateManager:
 TEAM = TeammateManager(TEAM_DIR)
 
 
-# -- Base tool implementations (these base tools are unchanged from s02) --
+# -- 基础工具实现（这些基础工具与 s02 保持不变） --
 def _safe_path(p: str) -> Path:
     path = (WORKDIR / p).resolve()
     if not path.is_relative_to(WORKDIR):
-        raise ValueError(f"Path escapes workspace: {p}")
+        raise ValueError(f"路径超出工作区范围：{p}")
     return path
 
 
 def _run_bash(command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot"]
     if any(d in command for d in dangerous):
-        return "Error: Dangerous command blocked"
+        return "错误：危险命令被拦截"
     try:
         r = subprocess.run(
             command, shell=True, cwd=WORKDIR,
             capture_output=True, text=True, timeout=120,
         )
         out = (r.stdout + r.stderr).strip()
-        return out[:50000] if out else "(no output)"
+        return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
-        return "Error: Timeout (120s)"
+        return "错误：超时 (120秒)"
 
 
 def _run_read(path: str, limit: int = None) -> str:
     try:
         lines = _safe_path(path).read_text().splitlines()
         if limit and limit < len(lines):
-            lines = lines[:limit] + [f"... ({len(lines) - limit} more)"]
+            lines = lines[:limit] + [f"... (还有 {len(lines) - limit} 行)"]
         return "\n".join(lines)[:50000]
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 
 def _run_write(path: str, content: str) -> str:
@@ -288,9 +288,9 @@ def _run_write(path: str, content: str) -> str:
         fp = _safe_path(path)
         fp.parent.mkdir(parents=True, exist_ok=True)
         fp.write_text(content)
-        return f"Wrote {len(content)} bytes"
+        return f"已写入 {len(content)} 字节"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 
 def _run_edit(path: str, old_text: str, new_text: str) -> str:
@@ -298,11 +298,11 @@ def _run_edit(path: str, old_text: str, new_text: str) -> str:
         fp = _safe_path(path)
         c = fp.read_text()
         if old_text not in c:
-            return f"Error: Text not found in {path}"
+            return f"错误：在 {path} 中未找到文本"
         fp.write_text(c.replace(old_text, new_text, 1))
-        return f"Edited {path}"
+        return f"已编辑 {path}"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误：{e}"
 
 
 # -- Lead tool dispatch (9 tools) --
@@ -320,23 +320,23 @@ TOOL_HANDLERS = {
 
 # these base tools are unchanged from s02
 TOOLS = [
-    {"name": "bash", "description": "Run a shell command.",
+    {"name": "bash", "description": "运行 shell 命令。",
      "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
-    {"name": "read_file", "description": "Read file contents.",
+    {"name": "read_file", "description": "读取文件内容。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["path"]}},
-    {"name": "write_file", "description": "Write content to file.",
+    {"name": "write_file", "description": "写入内容到文件。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
-    {"name": "edit_file", "description": "Replace exact text in file.",
+    {"name": "edit_file", "description": "替换文件中的确切文本。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
-    {"name": "spawn_teammate", "description": "Spawn a persistent teammate that runs in its own thread.",
+    {"name": "spawn_teammate", "description": "生成一个在单独线程中运行的持久化队友。",
      "input_schema": {"type": "object", "properties": {"name": {"type": "string"}, "role": {"type": "string"}, "prompt": {"type": "string"}}, "required": ["name", "role", "prompt"]}},
-    {"name": "list_teammates", "description": "List all teammates with name, role, status.",
+    {"name": "list_teammates", "description": "列出所有队友及其姓名、角色、状态。",
      "input_schema": {"type": "object", "properties": {}}},
-    {"name": "send_message", "description": "Send a message to a teammate's inbox.",
+    {"name": "send_message", "description": "向队友的收件箱发送消息。",
      "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "content": {"type": "string"}, "msg_type": {"type": "string", "enum": list(VALID_MSG_TYPES)}}, "required": ["to", "content"]}},
-    {"name": "read_inbox", "description": "Read and drain the lead's inbox.",
+    {"name": "read_inbox", "description": "读取并排空负责人的收件箱。",
      "input_schema": {"type": "object", "properties": {}}},
-    {"name": "broadcast", "description": "Send a message to all teammates.",
+    {"name": "broadcast", "description": "向所有队友发送消息。",
      "input_schema": {"type": "object", "properties": {"content": {"type": "string"}}, "required": ["content"]}},
 ]
 
@@ -351,7 +351,7 @@ def agent_loop(messages: list):
             })
             messages.append({
                 "role": "assistant",
-                "content": "Noted inbox messages.",
+                "content": "收到收件箱消息。",
             })
         response = client.messages.create(
             model=MODEL,
@@ -368,9 +368,9 @@ def agent_loop(messages: list):
             if block.type == "tool_use":
                 handler = TOOL_HANDLERS.get(block.name)
                 try:
-                    output = handler(**block.input) if handler else f"Unknown tool: {block.name}"
+                    output = handler(**block.input) if handler else f"未知工具：{block.name}"
                 except Exception as e:
-                    output = f"Error: {e}"
+                    output = f"错误：{e}"
                 print(f"> {block.name}: {str(output)[:200]}")
                 results.append({
                     "type": "tool_result",

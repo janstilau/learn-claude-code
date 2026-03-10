@@ -1,9 +1,9 @@
 """
-Tool Templates - Copy and customize these for your agent.
+Tool Templates - 复制并自定义这些用于你的代理。
 
-Each tool needs:
-1. Definition (JSON schema for the model)
-2. Implementation (Python function)
+每个工具需要:
+1. 定义 (模型的 JSON 架构)
+2. 实现 (Python 函数)
 """
 
 from pathlib import Path
@@ -13,18 +13,18 @@ WORKDIR = Path.cwd()
 
 
 # =============================================================================
-# TOOL DEFINITIONS (for TOOLS list)
+# 工具定义 (用于 TOOLS 列表)
 # =============================================================================
 
 BASH_TOOL = {
     "name": "bash",
-    "description": "Run a shell command. Use for: ls, find, grep, git, npm, python, etc.",
+    "description": "运行 shell 命令。用于: ls, find, grep, git, npm, python 等。",
     "input_schema": {
         "type": "object",
         "properties": {
             "command": {
                 "type": "string",
-                "description": "The shell command to execute"
+                "description": "要执行的 shell 命令"
             }
         },
         "required": ["command"],
@@ -33,17 +33,17 @@ BASH_TOOL = {
 
 READ_FILE_TOOL = {
     "name": "read_file",
-    "description": "Read file contents. Returns UTF-8 text.",
+    "description": "读取文件内容。返回 UTF-8 文本。",
     "input_schema": {
         "type": "object",
         "properties": {
             "path": {
                 "type": "string",
-                "description": "Relative path to the file"
+                "description": "文件的相对路径"
             },
             "limit": {
                 "type": "integer",
-                "description": "Max lines to read (default: all)"
+                "description": "最大读取行数 (默认: 全部)"
             },
         },
         "required": ["path"],
@@ -52,17 +52,17 @@ READ_FILE_TOOL = {
 
 WRITE_FILE_TOOL = {
     "name": "write_file",
-    "description": "Write content to a file. Creates parent directories if needed.",
+    "description": "将内容写入文件。如果需要，创建父目录。",
     "input_schema": {
         "type": "object",
         "properties": {
             "path": {
                 "type": "string",
-                "description": "Relative path for the file"
+                "description": "文件的相对路径"
             },
             "content": {
                 "type": "string",
-                "description": "Content to write"
+                "description": "要写入的内容"
             },
         },
         "required": ["path", "content"],
@@ -71,21 +71,21 @@ WRITE_FILE_TOOL = {
 
 EDIT_FILE_TOOL = {
     "name": "edit_file",
-    "description": "Replace exact text in a file. Use for surgical edits.",
+    "description": "替换文件中的确切文本。用于精确编辑。",
     "input_schema": {
         "type": "object",
         "properties": {
             "path": {
                 "type": "string",
-                "description": "Relative path to the file"
+                "description": "文件的相对路径"
             },
             "old_text": {
                 "type": "string",
-                "description": "Exact text to find (must match precisely)"
+                "description": "要查找的确切文本 (必须精确匹配)"
             },
             "new_text": {
                 "type": "string",
-                "description": "Replacement text"
+                "description": "替换文本"
             },
         },
         "required": ["path", "old_text", "new_text"],
@@ -94,19 +94,19 @@ EDIT_FILE_TOOL = {
 
 TODO_WRITE_TOOL = {
     "name": "TodoWrite",
-    "description": "Update the task list. Use to plan and track progress.",
+    "description": "更新任务列表。用于计划和跟踪进度。",
     "input_schema": {
         "type": "object",
         "properties": {
             "items": {
                 "type": "array",
-                "description": "Complete list of tasks",
+                "description": "完整的任务列表",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "content": {"type": "string", "description": "Task description"},
+                        "content": {"type": "string", "description": "任务描述"},
                         "status": {"type": "string", "enum": ["pending", "in_progress", "completed"]},
-                        "activeForm": {"type": "string", "description": "Present tense, e.g. 'Reading files'"},
+                        "activeForm": {"type": "string", "description": "现在时态，例如 'Reading files'"},
                     },
                     "required": ["content", "status", "activeForm"],
                 },
@@ -135,7 +135,7 @@ TASK_TOOL = {
 
 
 # =============================================================================
-# TOOL IMPLEMENTATIONS
+# 工具实现
 # =============================================================================
 
 def safe_path(p: str) -> Path:
@@ -145,7 +145,7 @@ def safe_path(p: str) -> Path:
     """
     path = (WORKDIR / p).resolve()
     if not path.is_relative_to(WORKDIR):
-        raise ValueError(f"Path escapes workspace: {p}")
+        raise ValueError(f"路径超出工作区范围: {p}")
     return path
 
 
@@ -160,7 +160,7 @@ def run_bash(command: str) -> str:
     """
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
     if any(d in command for d in dangerous):
-        return "Error: Dangerous command blocked"
+        return "错误: 危险命令已阻止"
 
     try:
         result = subprocess.run(
@@ -172,12 +172,12 @@ def run_bash(command: str) -> str:
             timeout=60
         )
         output = (result.stdout + result.stderr).strip()
-        return output[:50000] if output else "(no output)"
+        return output[:50000] if output else "(无输出)"
 
     except subprocess.TimeoutExpired:
-        return "Error: Command timed out (60s)"
+        return "错误: 命令超时 (60s)"
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误: {e}"
 
 
 def run_read_file(path: str, limit: int = None) -> str:
@@ -195,12 +195,12 @@ def run_read_file(path: str, limit: int = None) -> str:
 
         if limit and limit < len(lines):
             lines = lines[:limit]
-            lines.append(f"... ({len(text.splitlines()) - limit} more lines)")
+            lines.append(f"... (还有 {len(text.splitlines()) - limit} 行)")
 
         return "\n".join(lines)[:50000]
 
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误: {e}"
 
 
 def run_write_file(path: str, content: str) -> str:
@@ -216,10 +216,10 @@ def run_write_file(path: str, content: str) -> str:
         fp = safe_path(path)
         fp.parent.mkdir(parents=True, exist_ok=True)
         fp.write_text(content)
-        return f"Wrote {len(content)} bytes to {path}"
+        return f"写入了 {len(content)} 字节到 {path}"
 
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误: {e}"
 
 
 def run_edit_file(path: str, old_text: str, new_text: str) -> str:
@@ -236,18 +236,18 @@ def run_edit_file(path: str, old_text: str, new_text: str) -> str:
         content = fp.read_text()
 
         if old_text not in content:
-            return f"Error: Text not found in {path}"
+            return f"错误: 在 {path} 中未找到文本"
 
         new_content = content.replace(old_text, new_text, 1)
         fp.write_text(new_content)
-        return f"Edited {path}"
+        return f"已编辑 {path}"
 
     except Exception as e:
-        return f"Error: {e}"
+        return f"错误: {e}"
 
 
 # =============================================================================
-# DISPATCHER PATTERN
+# 调度模式
 # =============================================================================
 
 def execute_tool(name: str, args: dict) -> str:
@@ -268,4 +268,4 @@ def execute_tool(name: str, args: dict) -> str:
     if name == "edit_file":
         return run_edit_file(args["path"], args["old_text"], args["new_text"])
     # Add more tools here...
-    return f"Unknown tool: {name}"
+    return f"未知工具: {name}"
