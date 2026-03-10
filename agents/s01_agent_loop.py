@@ -25,9 +25,15 @@ AI 编码代理的核心秘密就在这一个模式中：
 
 import os
 import subprocess
+import json
+import time
+from datetime import datetime
 
 from anthropic import Anthropic
 from dotenv import load_dotenv
+
+# 导入新的日志工具
+import logtool
 
 load_dotenv(override=True)
 
@@ -36,6 +42,7 @@ if os.getenv("ANTHROPIC_BASE_URL"):
 
 client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
 MODEL = os.environ["MODEL_ID"]
+logger = logtool.get_logger()
 
 SYSTEM = f"你是一个位于 {os.getcwd()} 的编码代理。使用 bash 来解决任务。直接行动，不要解释。"
 
@@ -66,10 +73,37 @@ def run_bash(command: str) -> str:
 # -- 核心模式：一个 while 循环调用工具直到模型停止 --
 def agent_loop(messages: list):
     while True:
+        # 准备请求数据
+        request_data = {
+            "model": MODEL,
+            "system": SYSTEM,
+            "messages": messages, # 注意：这里的 messages 是引用，随着循环会变，但在此时是快照
+            "tools": TOOLS
+        }
+        
         response = client.messages.create(
             model=MODEL, system=SYSTEM, messages=messages,
             tools=TOOLS, max_tokens=8000,
         )
+        
+        # 准备响应数据
+        response_data = {
+            "stop_reason": response.stop_reason,
+            "content": [block.model_dump() for block in response.content],
+            "usage": response.usage.model_dump()
+        }
+        
+        # 写入日志
+        logger.log_interaction(request_data, response_data)
+
+        logtool.print_model_response_header()
+        
+        for block in response.content:
+            if block.type == "text":
+                logtool.print_model_text(block.text)
+            elif block.type == "tool_use":
+                logtool.print_tool_use(block.input)
+
         # 追加助手回合（将 Pydantic 对象转换为字典）
         messages.append({"role": "assistant", "content": [
             block.model_dump() for block in response.content
@@ -81,9 +115,8 @@ def agent_loop(messages: list):
         results = []
         for block in response.content:
             if block.type == "tool_use":
-                print(f"\033[33m$ {block.input['command']}\033[0m")
                 output = run_bash(block.input["command"])
-                print(output[:200])
+                logtool.print_tool_result(output)
                 results.append({"type": "tool_result", "tool_use_id": block.id,
                                 "content": output})
         messages.append({"role": "user", "content": results})
@@ -93,16 +126,12 @@ if __name__ == "__main__":
     history = []
     while True:
         try:
-            query = input("\033[36ms01 >> \033[0m")
+            logtool.print_user("") # 仅为了一致性，这里主要还是 input 提示
+            query = input(f"{logtool.Colors.CYAN}s01 >> {logtool.Colors.RESET}")
         except (EOFError, KeyboardInterrupt):
             break
         if query.strip().lower() in ("q", "exit", ""):
             break
         history.append({"role": "user", "content": query})
         agent_loop(history)
-        response_content = history[-1]["content"]
-        if isinstance(response_content, list):
-            for block in response_content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    print(block.get("text", ""))
         print()
