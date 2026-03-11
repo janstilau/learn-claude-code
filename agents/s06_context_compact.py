@@ -102,6 +102,8 @@ def auto_compact(messages: list) -> list:
     with open(transcript_path, "w") as f:
         for msg in messages:
             f.write(json.dumps(msg, default=str) + "\n")
+            
+# 会把原来的数据, 存储起来, 然后调用大模型进行总结. 
     logtool.print_info(f"[对话记录已保存：{transcript_path}]")
     # Ask LLM to summarize
     conversation_text = json.dumps(messages, default=str)[:80000]
@@ -195,6 +197,7 @@ TOOLS = [
 def agent_loop(messages: list):
     while True:
         # Layer 1: micro_compact before each LLM call
+        # 这个压缩是自动触发的, 这是这个项目的逻辑, 不是真实的逻辑.
         micro_compact(messages)
         # Layer 2: auto_compact if token estimate exceeds threshold
         if estimate_tokens(messages) > THRESHOLD:
@@ -242,6 +245,7 @@ def agent_loop(messages: list):
             if block.type == "tool_use":
                 if block.name == "compact":
                     logtool.print_info("[触发手动压缩]")
+# 手动触发的思路, 和自动触发是一样的, 都是调用接口进行触发. 
                     messages[:] = auto_compact(messages)
                     output = "已压缩对话历史。"
                 else:
