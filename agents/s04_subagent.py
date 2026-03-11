@@ -114,6 +114,7 @@ CHILD_TOOLS = [
 
 # -- 子代理：全新的上下文，过滤后的工具，仅返回摘要 --
 def run_subagent(prompt: str) -> str:
+    # -- 这里的实现, 其实和主 Agent 是一样的, 只是系统提示不同. 所有的内容, 还是要集合到 messages 中. 在下一条发送的时候, 带上全部的 messages.
     sub_messages = [{"role": "user", "content": prompt}]  # fresh context
     for _ in range(30):  # safety limit
         # 准备请求数据
@@ -178,12 +179,15 @@ def run_subagent(prompt: str) -> str:
             if "tool_use_id" in res:
                 res["tool_call_id"] = res["tool_use_id"]
              
+
         sub_messages.append({"role": "user", "content": final_results})
+        
     # 只有最终文本返回给父代理——子代理上下文被丢弃
     return "".join(b.text for b in response.content if hasattr(b, "text")) or "(无摘要)"
 
 
 # -- 父代理工具：基础工具 + 任务调度器 --
+# Task 的 Tool 描述, 是只有主 Agent 才会有的. 
 PARENT_TOOLS = CHILD_TOOLS + [
     {"name": "task", "description": "生成一个具有全新上下文的子代理。它共享文件系统但不共享对话历史。",
      "input_schema": {"type": "object", "properties": {"prompt": {"type": "string"}, "description": {"type": "string", "description": "任务简短描述"}}, "required": ["prompt"]}},
@@ -231,6 +235,7 @@ def agent_loop(messages: list):
         results = []
         for block in response.content:
             if block.type == "tool_use":
+# 如果是 task, 那么执行单独的一个函数来完成这件事
                 if block.name == "task":
                     desc = block.input.get("description", "subtask")
                     print(f"{logtool.Colors.YELLOW}> task ({desc}): {block.input['prompt'][:80]}{logtool.Colors.RESET}")
