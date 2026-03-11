@@ -290,3 +290,13 @@ if __name__ == "__main__":
         history.append({"role": "user", "content": query})
         agent_loop(history)
         print()
+
+"""
+总结：
+这个 s07 任务系统展示了如何通过文件持久化（.tasks/*.json）来实现跨会话的任务状态管理。
+它通过 TaskManager 类实现了基本的 CRUD 操作和依赖管理（blockedBy/blocks）。
+虽然它提供了完备的工具链（create/update/list/get），但目前的实现完全依赖 LLM 的“自觉性”来调用这些工具。
+正如我们在实验中看到的，如果没有强力的 System Prompt 约束，LLM 倾向于跳过任务管理步骤，直接执行最终目标（如写代码）。
+要将其进化为真正的自动化 Agent，需要引入“执行器模式”（Executor Pattern），即把 Action 绑定在 Task 上由系统自动执行，
+而不是等待 LLM 发号施令。
+"""
