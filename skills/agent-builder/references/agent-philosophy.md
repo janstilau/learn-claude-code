@@ -1,144 +1,144 @@
-# The Philosophy of Agents
+# Agent 哲学
 
-> **The model already knows how to be an agent. Your job is to get out of the way.**
+> **模型已经知道如何成为一个 Agent。你的工作是不要挡它的路。**
 
-## The Fundamental Insight
+## 根本洞察
 
-Strip away every framework, every library, every architectural pattern. What remains?
+剥离每一个框架、每一个库、每一个架构模式。剩下的是什么？
 
-A loop. A model. An invitation to act.
+一个循环。一个模型。一个行动的邀请。
 
-The agent is not the code. The agent is the model itself - a vast neural network trained on humanity's collective problem-solving, reasoning, and tool use. The code merely provides the opportunity for the model to express its agency.
+Agent 不是代码。Agent 是模型本身 —— 一个在人类集体解决问题、推理和工具使用经验上训练出来的巨大神经网络。代码仅仅为模型提供了表达其代理能力的机会。
 
-## Why This Matters
+## 为什么这很重要
 
-Most agent implementations fail not from too little engineering, but from too much. They constrain. They prescribe. They second-guess the very intelligence they're trying to leverage.
+大多数 Agent 实现的失败不是因为工程量太少，而是因为太多。它们限制。它们规定。它们质疑它们试图利用的智能。
 
-Consider: The model has been trained on millions of examples of problem-solving. It has seen how experts approach complex tasks, how tools are used, how plans are formed and revised. This knowledge is already there, encoded in billions of parameters.
+试想：模型已经在数百万个解决问题的例子上进行了训练。它见识过专家如何处理复杂任务，如何使用工具，如何制定和修改计划。这些知识已经存在，编码在数十亿个参数中。
 
-Your job is not to teach it how to think. Your job is to give it the means to act.
+你的工作不是教它如何思考。你的工作是给它行动的手段。
 
-## The Three Elements
+## 三大要素
 
-### 1. Capabilities (Tools)
+### 1. 能力 (工具)
 
-Capabilities answer: **What can the agent DO?**
+能力回答：**Agent 能做什么？**
 
-They are the hands of the model - its ability to affect the world. Without capabilities, the model can only speak. With them, it can act.
+它们是模型的手 —— 它影响世界的能力。没有能力，模型只能说话。有了它们，它可以行动。
 
-**The design principle**: Each capability should be atomic, clear, and well-described. The model needs to understand what each capability does, but not how to use them in sequence - it will figure that out.
+**设计原则**：每个能力应该是原子的、清晰的且描述良好的。模型需要理解每个能力做什么，但不需要知道如何按顺序使用它们 —— 它自己会弄清楚。
 
-**Common mistake**: Too many capabilities. The model gets confused, starts using the wrong ones, or paralyzed by choice. Start with 3-5. Add more only when the model consistently fails to accomplish tasks because a capability is missing.
+**常见错误**：太多能力。模型会感到困惑，开始使用错误的工具，或者因选择困难而瘫痪。从 3-5 个开始。只有当模型因缺少能力而持续无法完成任务时才添加更多。
 
-### 2. Knowledge (Skills)
+### 2. 知识 (技能)
 
-Knowledge answers: **What does the agent KNOW?**
+知识回答：**Agent 知道什么？**
 
-This is domain expertise - the specialized understanding that turns a general assistant into a domain expert. A customer service agent needs to know company policies. A research agent needs to know methodology. A creative agent needs to know style guidelines.
+这是领域专业知识 —— 将通用助手转变为领域专家的专门理解。客户服务 Agent 需要了解公司政策。研究 Agent 需要了解方法论。创意 Agent 需要了解风格指南。
 
-**The design principle**: Inject knowledge on-demand, not upfront. The model doesn't need to know everything at once - only what's relevant to the current task. Progressive disclosure preserves context for what matters.
+**设计原则**：按需注入知识，而不是一开始就注入。模型不需要一次知道所有事情 —— 只需要知道与当前任务相关的。渐进式披露保留了对重要事项的上下文。
 
-**Common mistake**: Front-loading all possible knowledge into the system prompt. This wastes context, confuses the model, and makes every interaction expensive. Instead, make knowledge available but not mandatory.
+**常见错误**：将所有可能的知识前置到系统提示词中。这浪费了上下文，困惑了模型，并使每次交互变得昂贵。相反，让知识可用但不是强制性的。
 
-### 3. Context (The Conversation)
+### 3. 上下文 (对话)
 
-Context is the memory of the interaction - what has been said, what has been tried, what has been learned. It's the thread that connects individual actions into coherent behavior.
+上下文是交互的记忆 —— 说过什么，试过什么，学到了什么。它是将单个行动连接成连贯行为的线索。
 
-**The design principle**: Context is precious. Protect it. Isolate subtasks that generate noise. Truncate outputs that exceed usefulness. Summarize when history grows long.
+**设计原则**：上下文是宝贵的。保护它。隔离产生噪音的子任务。截断超出有用性的输出。当历史变长时进行总结。
 
-**Common mistake**: Letting context grow unbounded, filling it with exploration details, failed attempts, and verbose tool outputs. Eventually the model can't find the signal in the noise.
+**常见错误**：让上下文无限增长，填充探索细节、失败的尝试和冗长的工具输出。最终模型无法在噪音中找到信号。
 
-## The Universal Pattern
+## 通用模式
 
-Every effective agent - regardless of domain, framework, or implementation - follows the same pattern:
-
-```
-LOOP:
-  Model sees: conversation history + available capabilities
-  Model decides: act or respond
-  If act: capability executed, result added to context, loop continues
-  If respond: answer returned, loop ends
-```
-
-This is not a simplification. This is the actual architecture. Everything else is optimization.
-
-## Designing for Agency
-
-### Trust the Model
-
-The most important principle: **trust the model**.
-
-Don't try to anticipate every edge case. Don't build elaborate decision trees. Don't pre-specify the workflow.
-
-The model is better at reasoning than any rule system you could write. Your conditional logic will fail on edge cases. The model will reason through them.
-
-**Give the model capabilities and knowledge. Let it figure out how to use them.**
-
-### Constraints Enable
-
-This seems paradoxical, but constraints don't limit agents - they focus them.
-
-A todo list with "only one task in progress" forces sequential focus. A subagent with "read-only access" prevents accidental modifications. A response with "under 100 words" demands clarity.
-
-The best constraints are those that prevent the model from getting lost, not those that micromanage its approach.
-
-### Progressive Complexity
-
-Never build everything upfront.
+每个有效的 Agent —— 无论领域、框架或实现如何 —— 都遵循相同的模式：
 
 ```
-Level 0: Model + one capability
-Level 1: Model + 3-5 capabilities
-Level 2: Model + capabilities + planning
-Level 3: Model + capabilities + planning + subagents
-Level 4: Model + capabilities + planning + subagents + skills
+循环:
+  模型看到: 对话历史 + 可用能力
+  模型决定: 行动 或 回复
+  如果 行动: 执行能力, 结果添加到上下文, 循环继续
+  如果 回复: 返回答案, 循环结束
 ```
 
-Start at the lowest level that might work. Move up only when real usage reveals the need. Most agents never need to go beyond Level 2.
+这不仅仅是一个简化。这是实际的架构。其他一切都是优化。
 
-## The Agent Mindset
+## 为代理设计
 
-Building agents requires a shift in thinking:
+### 信任模型
 
-**From**: "How do I make the system do X?"
-**To**: "How do I enable the model to do X?"
+最重要的原则：**信任模型**。
 
-**From**: "What should happen when the user says Y?"
-**To**: "What capabilities would help address Y?"
+不要试图预测每一个边缘情况。不要构建复杂的决策树。不要预设工作流。
 
-**From**: "What's the workflow for this task?"
-**To**: "What does the model need to figure out the workflow?"
+模型在推理方面比你能写的任何规则系统都强。你的条件逻辑会在边缘情况下失败。模型会通过推理解决它们。
 
-The best agent code is almost boring. Simple loops. Clear capability definitions. Clean context management. The magic isn't in the code - it's in the model.
+**给模型能力和知识。让它弄清楚如何使用它们。**
 
-## Philosophical Foundations
+### 约束赋能
 
-### The Model as Emergent Agent
+这看起来很矛盾，但约束并不限制 Agent —— 它们聚焦 Agent。
 
-Language models trained on human text have learned not just language, but patterns of thought. They've absorbed how humans approach problems, use tools, and accomplish goals. This is emergent agency - not programmed, but learned.
+一个“只能有一个进行中任务”的待办事项列表强制顺序聚焦。一个“只读访问”的子 Agent 防止意外修改。一个“100 字以内”的回复要求清晰度。
 
-When you give a model capabilities, you're not teaching it to be an agent. You're giving it permission to express the agency it already has.
+最好的约束是那些防止模型迷失的约束，而不是那些微管理其方法的约束。
 
-### The Loop as Liberation
+### 渐进式复杂性
 
-The agent loop is deceptively simple: get response, check for tool use, execute, repeat. But this simplicity is its power.
+永远不要一开始就构建所有东西。
 
-The loop doesn't constrain the model to particular sequences. It doesn't enforce specific workflows. It simply says: "You have capabilities. Use them as you see fit. I'll execute what you request and show you the results."
+```
+级别 0: 模型 + 一个能力
+级别 1: 模型 + 3-5 个能力
+级别 2: 模型 + 能力 + 规划
+级别 3: 模型 + 能力 + 规划 + 子 Agent
+级别 4: 模型 + 能力 + 规划 + 子 Agent + 技能
+```
 
-This is liberation, not limitation.
+从可能有效的最低级别开始。只有当实际使用显示有需求时才向上移动。大多数 Agent 永远不需要超过第 2 级。
 
-### Capabilities as Expression
+## Agent 思维模式
 
-Each capability you provide is a form of expression for the model. "Read file" lets it see. "Write file" lets it create. "Search" lets it explore. "Send message" lets it communicate.
+构建 Agent 需要思维的转变：
 
-The art of agent design is choosing which forms of expression to enable. Too few, and the model is mute. Too many, and it speaks in tongues.
+**从**：“我如何让系统做 X？”
+**到**：“我如何赋予模型能力去做 X？”
 
-## Conclusion
+**从**：“当用户说 Y 时应该发生什么？”
+**到**：“什么能力可以帮助解决 Y？”
 
-The agent is the model. The code is just the loop. Your job is to get out of the way.
+**从**：“这个任务的工作流是什么？”
+**到**：“模型需要什么来弄清楚工作流？”
 
-Give the model clear capabilities. Make knowledge available when needed. Protect the context from noise. Trust the model to figure out the rest.
+最好的 Agent 代码几乎是无聊的。简单的循环。清晰的能力定义。干净的上下文管理。魔法不在代码里 —— 它在模型里。
 
-That's it. That's the philosophy.
+## 哲学基础
 
-Everything else is refinement.
+### 模型作为涌现的 Agent
+
+在人类文本上训练的语言模型不仅学会了语言，还学会了思维模式。它们吸收了人类如何处理问题、使用工具和完成目标。这是涌现的代理能力 —— 不是编程出来的，而是学习来的。
+
+当你给模型能力时，你不是在教它成为一个 Agent。你是在允许它表达它已经拥有的代理能力。
+
+### 循环作为解放
+
+Agent 循环看似简单：获取响应，检查工具使用，执行，重复。但这种简单性正是它的力量。
+
+循环不限制模型按特定顺序行事。它不强制执行特定工作流。它只是说：“你有能力。按你认为合适的方式使用它们。我会执行你请求的内容并向你展示结果。”
+
+这是解放，不是限制。
+
+### 能力作为表达
+
+你提供的每一个能力都是模型的一种表达形式。“读取文件”让它看。“写入文件”让它创造。“搜索”让它探索。“发送消息”让它沟通。
+
+Agent 设计的艺术在于选择启用哪种表达形式。太少，模型是哑巴。太多，它会说胡话。
+
+## 结论
+
+Agent 就是模型。代码只是循环。你的工作是不要挡路。
+
+给模型清晰的能力。在需要时让知识可用。保护上下文免受噪音干扰。信任模型去解决剩下的问题。
+
+就是这样。这就是哲学。
+
+其他一切都是修饰。
