@@ -107,11 +107,13 @@ class SkillLoader:
 SKILL_LOADER = SkillLoader(SKILLS_DIR)
 
 # Layer 1: skill metadata injected into system prompt
+# 在系统提示词里面, 就注入了 load_skill 这个工具, 用来加载技能. 
 SYSTEM = f"""你是一个位于 {WORKDIR} 的编码代理。
 在处理不熟悉的主题之前，使用 load_skill 来获取专业知识。
 
 可用技能：
 {SKILL_LOADER.get_descriptions()}"""
+# 在系统提示词里面, 就把 Skill 的 meta desc 都加载进去了. 
 
 
 # -- 工具实现 --
