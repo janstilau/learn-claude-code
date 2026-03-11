@@ -1,11 +1,10 @@
-"""
-Subagent Pattern - 如何实现 Task 工具以进行上下文隔离。
+"""Subagent Pattern - 如何实现 Task 工具以进行上下文隔离。
 
 核心洞察: 衍生具有隔离上下文的子代理，以防止"上下文污染"，即探索细节填满主对话。
 """
 
-import time
 import sys
+import time
 
 # Assuming client, MODEL, execute_tool are defined elsewhere
 
@@ -54,8 +53,7 @@ def get_agent_descriptions() -> str:
 
 
 def get_tools_for_agent(agent_type: str, base_tools: list) -> list:
-    """
-    Filter tools based on agent type.
+    """Filter tools based on agent type.
 
     '*' means all base tools.
     Otherwise, whitelist specific tool names.
@@ -94,16 +92,16 @@ TASK_TOOL = {
         "properties": {
             "description": {
                 "type": "string",
-                "description": "用于进度显示的简短任务名称 (3-5 个词)"
+                "description": "用于进度显示的简短任务名称 (3-5 个词)",
             },
             "prompt": {
                 "type": "string",
-                "description": "子代理的详细说明"
+                "description": "子代理的详细说明",
             },
             "agent_type": {
                 "type": "string",
                 "enum": list(AGENT_TYPES.keys()),
-                "description": "要衍生的代理类型"
+                "description": "要衍生的代理类型",
             },
         },
         "required": ["description", "prompt", "agent_type"],
@@ -117,8 +115,7 @@ TASK_TOOL = {
 
 def run_task(description: str, prompt: str, agent_type: str,
              client, model: str, workdir, base_tools: list, execute_tool) -> str:
-    """
-    Execute a subagent task with isolated context.
+    """Execute a subagent task with isolated context.
 
     Key concepts:
     1. ISOLATED HISTORY - subagent starts fresh, no parent context
@@ -138,6 +135,7 @@ def run_task(description: str, prompt: str, agent_type: str,
 
     Returns:
         Final text output from subagent
+
     """
     if agent_type not in AGENT_TYPES:
         return f"错误: 未知代理类型 '{agent_type}'"
@@ -187,13 +185,13 @@ def run_task(description: str, prompt: str, agent_type: str,
             results.append({
                 "type": "tool_result",
                 "tool_use_id": tc.id,
-                "content": output
+                "content": output,
             })
 
             # Update progress (in-place on same line)
             elapsed = time.time() - start
             sys.stdout.write(
-                f"\r  [{agent_type}] {description} ... {tool_count} 个工具, {elapsed:.1f}s"
+                f"\r  [{agent_type}] {description} ... {tool_count} 个工具, {elapsed:.1f}s",
             )
             sys.stdout.flush()
 
@@ -203,7 +201,7 @@ def run_task(description: str, prompt: str, agent_type: str,
     # Final progress update
     elapsed = time.time() - start
     sys.stdout.write(
-        f"\r  [{agent_type}] {description} - 完成 ({tool_count} 个工具, {elapsed:.1f}s)\n"
+        f"\r  [{agent_type}] {description} - 完成 ({tool_count} 个工具, {elapsed:.1f}s)\n",
     )
 
     # Extract and return ONLY the final text

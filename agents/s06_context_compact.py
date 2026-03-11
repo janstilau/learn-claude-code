@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-s06_context_compact.py - 上下文压缩
+"""s06_context_compact.py - 上下文压缩
 
 三层压缩管道，使代理能够永远工作下去：
 
@@ -39,6 +38,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import logtool
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
@@ -50,6 +50,7 @@ if os.getenv("ANTHROPIC_BASE_URL"):
 WORKDIR = Path.cwd()
 client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
 MODEL = os.environ["MODEL_ID"]
+logger = logtool.get_logger()
 
 SYSTEM = f"你是一个位于 {WORKDIR} 的编码代理。使用工具来解决任务。"
 
@@ -101,7 +102,7 @@ def auto_compact(messages: list) -> list:
     with open(transcript_path, "w") as f:
         for msg in messages:
             f.write(json.dumps(msg, default=str) + "\n")
-    print(f"[对话记录已保存：{transcript_path}]")
+    logtool.print_info(f"[对话记录已保存：{transcript_path}]")
     # Ask LLM to summarize
     conversation_text = json.dumps(messages, default=str)[:80000]
     response = client.messages.create(
@@ -133,7 +134,7 @@ def run_bash(command: str) -> str:
         return "错误：危险命令被拦截"
     try:
         r = subprocess.run(command, shell=True, cwd=WORKDIR,
-                           capture_output=True, text=True, timeout=120)
+                           capture_output=True, text=True, timeout=120, check=False)
         out = (r.stdout + r.stderr).strip()
         return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
@@ -197,51 +198,89 @@ def agent_loop(messages: list):
         micro_compact(messages)
         # Layer 2: auto_compact if token estimate exceeds threshold
         if estimate_tokens(messages) > THRESHOLD:
-            print("[触发自动压缩]")
+            logtool.print_info("[触发自动压缩]")
             messages[:] = auto_compact(messages)
+
+        # 准备请求数据
+        request_data = {
+            "model": MODEL,
+            "system": SYSTEM,
+            "messages": messages,
+            "tools": TOOLS,
+        }
+
         response = client.messages.create(
             model=MODEL, system=SYSTEM, messages=messages,
             tools=TOOLS, max_tokens=8000,
         )
-        messages.append({"role": "assistant", "content": response.content})
+
+        # 准备响应数据
+        response_data = {
+            "stop_reason": response.stop_reason,
+            "content": [block.model_dump() for block in response.content],
+            "usage": response.usage.model_dump(),
+        }
+
+        # 写入日志
+        logger.log_interaction(request_data, response_data)
+
+        logtool.print_model_response_header()
+
+        for block in response.content:
+            if block.type == "text":
+                logtool.print_model_text(block.text)
+            elif block.type == "tool_use":
+                logtool.print_tool_use(block.name, block.input)
+
+        messages.append({"role": "assistant", "content": [
+            block.model_dump() for block in response.content
+        ]})
         if response.stop_reason != "tool_use":
             return
         results = []
-        manual_compact = False
         for block in response.content:
             if block.type == "tool_use":
                 if block.name == "compact":
-                    manual_compact = True
-                    output = "正在压缩..."
+                    logtool.print_info("[触发手动压缩]")
+                    messages[:] = auto_compact(messages)
+                    output = "已压缩对话历史。"
                 else:
                     handler = TOOL_HANDLERS.get(block.name)
-                    try:
-                        output = handler(**block.input) if handler else f"未知工具：{block.name}"
-                    except Exception as e:
-                        output = f"错误：{e}"
-                print(f"> {block.name}: {str(output)[:200]}")
+                    output = handler(**block.input) if handler else f"未知工具：{block.name}"
+                logtool.print_tool_result(str(output))
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(output)})
-        messages.append({"role": "user", "content": results})
-        # Layer 3: manual compact triggered by the compact tool
-        if manual_compact:
-            print("[手动压缩]")
-            messages[:] = auto_compact(messages)
+
+        # 确保所有工具调用都有结果
+        final_results = []
+        for block in response.content:
+            if block.type == "tool_use":
+                found = False
+                for r in results:
+                    if r["tool_use_id"] == block.id:
+                        final_results.append(r)
+                        found = True
+                        break
+                if not found:
+                    final_results.append({"type": "tool_result", "tool_use_id": block.id, "content": "错误：工具执行失败或被跳过"})
+        
+        # 兼容性修复：添加 OpenAI 风格的 tool_call_id
+        for res in final_results:
+            if "tool_use_id" in res:
+                res["tool_call_id"] = res["tool_use_id"]
+             
+        messages.append({"role": "user", "content": final_results})
 
 
 if __name__ == "__main__":
     history = []
     while True:
         try:
-            query = input("\033[36ms06 >> \033[0m")
+            logtool.print_user("")
+            query = input(f"{logtool.Colors.CYAN}s06 >> {logtool.Colors.RESET}")
         except (EOFError, KeyboardInterrupt):
             break
         if query.strip().lower() in ("q", "exit", ""):
             break
         history.append({"role": "user", "content": query})
         agent_loop(history)
-        response_content = history[-1]["content"]
-        if isinstance(response_content, list):
-            for block in response_content:
-                if hasattr(block, "text"):
-                    print(block.text)
         print()

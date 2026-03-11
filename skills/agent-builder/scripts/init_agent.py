@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Agent Scaffold Script - 创建具有最佳实践的新代理项目。
+"""Agent Scaffold Script - 创建具有最佳实践的新代理项目。
 
 用法:
     python init_agent.py <agent-name> [--level 0-4] [--path <output-dir>]
@@ -207,11 +206,11 @@ if __name__ == "__main__":
 ''',
 }
 
-ENV_TEMPLATE = '''# API 配置
+ENV_TEMPLATE = """# API 配置
 ANTHROPIC_API_KEY=sk-xxx
 ANTHROPIC_BASE_URL=https://api.anthropic.com
 MODEL_NAME=claude-sonnet-4-20250514
-'''
+"""
 
 
 def create_agent(name: str, level: int, output_dir: Path):
@@ -244,11 +243,11 @@ def create_agent(name: str, level: int, output_dir: Path):
     print(f"已创建: {gitignore}")
 
     print(f"\n代理 '{name}' 已创建于 {agent_dir}")
-    print(f"\n下一步:")
+    print("\n下一步:")
     print(f"  1. cd {agent_dir}")
-    print(f"  2. cp .env.example .env")
-    print(f"  3. 编辑 .env 填入你的 API key")
-    print(f"  4. pip install anthropic python-dotenv")
+    print("  2. cp .env.example .env")
+    print("  3. 编辑 .env 填入你的 API key")
+    print("  4. pip install anthropic python-dotenv")
     print(f"  5. python {name}.py")
 
 
@@ -263,7 +262,7 @@ def main():
   2  待办 (~300 行)  - + TodoWrite 用于结构化规划
   3  子代理 (~450)   - + Task 工具用于上下文隔离
   4  技能 (~550)     - + Skill 工具用于领域专业知识
-        """
+        """,
     )
     parser.add_argument("name", help="要创建的代理名称")
     parser.add_argument("--level", type=int, default=1, choices=[0, 1, 2, 3, 4],

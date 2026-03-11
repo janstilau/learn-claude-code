@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-s12_worktree_task_isolation.py - 工作树 + 任务隔离
+"""s12_worktree_task_isolation.py - 工作树 + 任务隔离
 
 并行任务执行的目录级隔离。
 任务是控制平面，工作树是执行平面。
@@ -36,6 +35,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import logtool
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
@@ -47,6 +47,7 @@ if os.getenv("ANTHROPIC_BASE_URL"):
 WORKDIR = Path.cwd()
 client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
 MODEL = os.environ["MODEL_ID"]
+logger = logtool.get_logger()
 
 
 def detect_repo_root(cwd: Path) -> Path | None:
@@ -57,7 +58,7 @@ def detect_repo_root(cwd: Path) -> Path | None:
             cwd=cwd,
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=10, check=False,
         )
         if r.returncode != 0:
             return None
@@ -240,7 +241,7 @@ class WorktreeManager:
                 cwd=self.repo_root,
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=10, check=False,
             )
             return r.returncode == 0
         except Exception:
@@ -254,7 +255,7 @@ class WorktreeManager:
             cwd=self.repo_root,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=120, check=False,
         )
         if r.returncode != 0:
             msg = (r.stdout + r.stderr).strip()
@@ -277,7 +278,7 @@ class WorktreeManager:
     def _validate_name(self, name: str):
         if not re.fullmatch(r"[A-Za-z0-9._-]{1,40}", name or ""):
             raise ValueError(
-                "无效的工作树名称。使用 1-40 个字符: 字母, 数字, ., _, -"
+                "无效的工作树名称。使用 1-40 个字符: 字母, 数字, ., _, -",
             )
 
     def create(self, name: str, task_id: int = None, base_ref: str = "HEAD") -> str:
@@ -343,7 +344,7 @@ class WorktreeManager:
             suffix = f" task={wt['task_id']}" if wt.get("task_id") else ""
             lines.append(
                 f"[{wt.get('status', 'unknown')}] {wt['name']} -> "
-                f"{wt['path']} ({wt.get('branch', '-')}){suffix}"
+                f"{wt['path']} ({wt.get('branch', '-')}){suffix}",
             )
         return "\n".join(lines)
 
@@ -359,7 +360,7 @@ class WorktreeManager:
             cwd=path,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=60, check=False,
         )
         text = (r.stdout + r.stderr).strip()
         return text or "干净的工作树"
@@ -383,7 +384,7 @@ class WorktreeManager:
                 cwd=path,
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=300, check=False,
             )
             out = (r.stdout + r.stderr).strip()
             return out[:50000] if out else "(无输出)"
@@ -492,7 +493,7 @@ def run_bash(command: str) -> str:
             cwd=WORKDIR,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=120, check=False,
         )
         out = (r.stdout + r.stderr).strip()
         return out[:50000] if out else "(无输出)"
@@ -727,6 +728,14 @@ TOOLS = [
 
 def agent_loop(messages: list):
     while True:
+        # 准备请求数据
+        request_data = {
+            "model": MODEL,
+            "system": SYSTEM,
+            "messages": messages,
+            "tools": TOOLS,
+        }
+
         response = client.messages.create(
             model=MODEL,
             system=SYSTEM,
@@ -734,7 +743,28 @@ def agent_loop(messages: list):
             tools=TOOLS,
             max_tokens=8000,
         )
-        messages.append({"role": "assistant", "content": response.content})
+
+        # 准备响应数据
+        response_data = {
+            "stop_reason": response.stop_reason,
+            "content": [block.model_dump() for block in response.content],
+            "usage": response.usage.model_dump(),
+        }
+
+        # 写入日志
+        logger.log_interaction(request_data, response_data)
+
+        logtool.print_model_response_header()
+
+        for block in response.content:
+            if block.type == "text":
+                logtool.print_model_text(block.text)
+            elif block.type == "tool_use":
+                logtool.print_tool_use(block.name, block.input)
+
+        messages.append({"role": "assistant", "content": [
+            block.model_dump() for block in response.content
+        ]})
         if response.stop_reason != "tool_use":
             return
 
@@ -746,35 +776,49 @@ def agent_loop(messages: list):
                     output = handler(**block.input) if handler else f"未知工具: {block.name}"
                 except Exception as e:
                     output = f"错误: {e}"
-                print(f"> {block.name}: {str(output)[:200]}")
+                logtool.print_tool_result(str(output))
                 results.append(
                     {
                         "type": "tool_result",
                         "tool_use_id": block.id,
                         "content": str(output),
-                    }
+                    },
                 )
-        messages.append({"role": "user", "content": results})
+        # 确保所有工具调用都有结果
+        final_results = []
+        for block in response.content:
+            if block.type == "tool_use":
+                found = False
+                for r in results:
+                    if r["tool_use_id"] == block.id:
+                        final_results.append(r)
+                        found = True
+                        break
+                if not found:
+                    final_results.append({"type": "tool_result", "tool_use_id": block.id, "content": "错误：工具执行失败或被跳过"})
+        
+        # 兼容性修复：添加 OpenAI 风格的 tool_call_id
+        for res in final_results:
+            if "tool_use_id" in res:
+                res["tool_call_id"] = res["tool_use_id"]
+             
+        messages.append({"role": "user", "content": final_results})
 
 
 if __name__ == "__main__":
-    print(f"s12 的仓库根目录: {REPO_ROOT}")
+    logtool.print_info(f"s12 的仓库根目录: {REPO_ROOT}")
     if not WORKTREES.git_available:
-        print("注意: 不在 git 仓库中。worktree_* 工具将返回错误。")
+        logtool.print_error("注意: 不在 git 仓库中。worktree_* 工具将返回错误。")
 
     history = []
     while True:
         try:
-            query = input("\033[36ms12 >> \033[0m")
+            logtool.print_user("")
+            query = input(f"{logtool.Colors.CYAN}s12 >> {logtool.Colors.RESET}")
         except (EOFError, KeyboardInterrupt):
             break
         if query.strip().lower() in ("q", "exit", ""):
             break
         history.append({"role": "user", "content": query})
         agent_loop(history)
-        response_content = history[-1]["content"]
-        if isinstance(response_content, list):
-            for block in response_content:
-                if hasattr(block, "text"):
-                    print(block.text)
         print()

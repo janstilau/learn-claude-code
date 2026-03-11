@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""
-logtool.py - 通用日志和彩色打印工具
+"""logtool.py - 通用日志和彩色打印工具
 
 提供统一的日志记录功能（JSONL 格式）和标准化的控制台彩色输出。
 """
 
-import os
 import json
-import time
+import os
+import threading
 from datetime import datetime
+
 
 # ANSI 颜色代码
 class Colors:
     RESET = "\033[0m"
     BOLD = "\033[1m"
-    
+
     # 前景色
     BLACK = "\033[30m"
     RED = "\033[31m"
@@ -33,6 +33,7 @@ class Logger:
         os.makedirs(self.log_dir, exist_ok=True)
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.log_file = os.path.join(self.log_dir, f"agent_trace_{self.session_id}.jsonl")
+        self._lock = threading.Lock()
         print(f"{Colors.GRAY}Logging trace to: {self.log_file}{Colors.RESET}")
 
     def log_interaction(self, request_data: dict, response_data: dict):
@@ -41,12 +42,13 @@ class Logger:
             "timestamp": datetime.now().isoformat(),
             "type": "interaction",
             "request": request_data,
-            "response": response_data
+            "response": response_data,
         }
-        
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            # 使用 indent=2 方便人类阅读，并在记录间添加逗号和换行
-            f.write(json.dumps(interaction_log, ensure_ascii=False, indent=2) + "\n,\n")
+
+        with self._lock:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                # 使用 indent=2 方便人类阅读，并在记录间添加逗号和换行
+                f.write(json.dumps(interaction_log, ensure_ascii=False, indent=2) + "\n,\n")
 
 # 全局单例
 _logger = None
@@ -69,9 +71,9 @@ def print_model_text(text: str):
     """打印模型文本回复 (Orange)"""
     print(f"{Colors.ORANGE}{text}{Colors.RESET}")
 
-def print_tool_use(tool_input: dict):
+def print_tool_use(name: str, tool_input: dict):
     """打印工具调用信息 (Yellow)"""
-    print(f"{Colors.YELLOW}Tool Use: {tool_input}{Colors.RESET}")
+    print(f"{Colors.YELLOW}Tool Use: {name} {json.dumps(tool_input, ensure_ascii=False)}{Colors.RESET}")
 
 def print_tool_result(result: str):
     """打印工具执行结果 (Green)"""

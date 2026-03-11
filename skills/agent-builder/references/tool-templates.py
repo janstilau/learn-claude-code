@@ -1,13 +1,12 @@
-"""
-Tool Templates - 复制并自定义这些用于你的代理。
+"""Tool Templates - 复制并自定义这些用于你的代理。
 
 每个工具需要:
 1. 定义 (模型的 JSON 架构)
 2. 实现 (Python 函数)
 """
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 WORKDIR = Path.cwd()
 
@@ -24,8 +23,8 @@ BASH_TOOL = {
         "properties": {
             "command": {
                 "type": "string",
-                "description": "要执行的 shell 命令"
-            }
+                "description": "要执行的 shell 命令",
+            },
         },
         "required": ["command"],
     },
@@ -39,11 +38,11 @@ READ_FILE_TOOL = {
         "properties": {
             "path": {
                 "type": "string",
-                "description": "文件的相对路径"
+                "description": "文件的相对路径",
             },
             "limit": {
                 "type": "integer",
-                "description": "最大读取行数 (默认: 全部)"
+                "description": "最大读取行数 (默认: 全部)",
             },
         },
         "required": ["path"],
@@ -58,11 +57,11 @@ WRITE_FILE_TOOL = {
         "properties": {
             "path": {
                 "type": "string",
-                "description": "文件的相对路径"
+                "description": "文件的相对路径",
             },
             "content": {
                 "type": "string",
-                "description": "要写入的内容"
+                "description": "要写入的内容",
             },
         },
         "required": ["path", "content"],
@@ -77,15 +76,15 @@ EDIT_FILE_TOOL = {
         "properties": {
             "path": {
                 "type": "string",
-                "description": "文件的相对路径"
+                "description": "文件的相对路径",
             },
             "old_text": {
                 "type": "string",
-                "description": "要查找的确切文本 (必须精确匹配)"
+                "description": "要查找的确切文本 (必须精确匹配)",
             },
             "new_text": {
                 "type": "string",
-                "description": "替换文本"
+                "description": "替换文本",
             },
         },
         "required": ["path", "old_text", "new_text"],
@@ -110,7 +109,7 @@ TODO_WRITE_TOOL = {
                     },
                     "required": ["content", "status", "activeForm"],
                 },
-            }
+            },
         },
         "required": ["items"],
     },
@@ -139,8 +138,7 @@ TASK_TOOL = {
 # =============================================================================
 
 def safe_path(p: str) -> Path:
-    """
-    Security: Ensure path stays within workspace.
+    """Security: Ensure path stays within workspace.
     Prevents ../../../etc/passwd attacks.
     """
     path = (WORKDIR / p).resolve()
@@ -150,8 +148,7 @@ def safe_path(p: str) -> Path:
 
 
 def run_bash(command: str) -> str:
-    """
-    Execute shell command with safety checks.
+    """Execute shell command with safety checks.
 
     Safety features:
     - Blocks obviously dangerous commands
@@ -169,7 +166,7 @@ def run_bash(command: str) -> str:
             cwd=WORKDIR,
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=60, check=False,
         )
         output = (result.stdout + result.stderr).strip()
         return output[:50000] if output else "(无输出)"
@@ -181,8 +178,7 @@ def run_bash(command: str) -> str:
 
 
 def run_read_file(path: str, limit: int = None) -> str:
-    """
-    Read file contents with optional line limit.
+    """Read file contents with optional line limit.
 
     Features:
     - Safe path resolution
@@ -204,8 +200,7 @@ def run_read_file(path: str, limit: int = None) -> str:
 
 
 def run_write_file(path: str, content: str) -> str:
-    """
-    Write content to file, creating parent directories if needed.
+    """Write content to file, creating parent directories if needed.
 
     Features:
     - Safe path resolution
@@ -223,8 +218,7 @@ def run_write_file(path: str, content: str) -> str:
 
 
 def run_edit_file(path: str, old_text: str, new_text: str) -> str:
-    """
-    Replace exact text in a file (surgical edit).
+    """Replace exact text in a file (surgical edit).
 
     Features:
     - Exact string matching (not regex)
@@ -251,8 +245,7 @@ def run_edit_file(path: str, old_text: str, new_text: str) -> str:
 # =============================================================================
 
 def execute_tool(name: str, args: dict) -> str:
-    """
-    Dispatch tool call to implementation.
+    """Dispatch tool call to implementation.
 
     This pattern makes it easy to add new tools:
     1. Add definition to TOOLS list

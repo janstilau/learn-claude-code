@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-s04_subagent.py - 子代理
+"""s04_subagent.py - 子代理
 
 生成一个带有 fresh messages=[] 的子代理。子代理在自己的
 上下文中工作，共享文件系统，然后只向父代理返回摘要。
@@ -26,6 +25,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import logtool
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
@@ -37,6 +37,7 @@ if os.getenv("ANTHROPIC_BASE_URL"):
 WORKDIR = Path.cwd()
 client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
 MODEL = os.environ["MODEL_ID"]
+logger = logtool.get_logger()
 
 SYSTEM = f"你是一个位于 {WORKDIR} 的编码代理。使用 task 工具来委派探索或子任务。"
 SUBAGENT_SYSTEM = f"你是一个位于 {WORKDIR} 的编码子代理。完成给定的任务，然后总结你的发现。"
@@ -55,7 +56,7 @@ def run_bash(command: str) -> str:
         return "错误：危险命令被拦截"
     try:
         r = subprocess.run(command, shell=True, cwd=WORKDIR,
-                           capture_output=True, text=True, timeout=120)
+                           capture_output=True, text=True, timeout=120, check=False)
         out = (r.stdout + r.stderr).strip()
         return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
@@ -115,11 +116,40 @@ CHILD_TOOLS = [
 def run_subagent(prompt: str) -> str:
     sub_messages = [{"role": "user", "content": prompt}]  # fresh context
     for _ in range(30):  # safety limit
+        # 准备请求数据
+        request_data = {
+            "model": MODEL,
+            "system": SUBAGENT_SYSTEM,
+            "messages": sub_messages,
+            "tools": CHILD_TOOLS,
+        }
+
         response = client.messages.create(
             model=MODEL, system=SUBAGENT_SYSTEM, messages=sub_messages,
             tools=CHILD_TOOLS, max_tokens=8000,
         )
-        sub_messages.append({"role": "assistant", "content": response.content})
+
+        # 准备响应数据
+        response_data = {
+            "stop_reason": response.stop_reason,
+            "content": [block.model_dump() for block in response.content],
+            "usage": response.usage.model_dump(),
+        }
+
+        # 写入日志
+        logger.log_interaction(request_data, response_data)
+
+        # 子代理的输出也打印，方便调试
+        print(f"\n{logtool.Colors.MAGENTA}[Subagent] model_response:{logtool.Colors.RESET}")
+        for block in response.content:
+            if block.type == "text":
+                logtool.print_model_text(block.text)
+            elif block.type == "tool_use":
+                logtool.print_tool_use(block.name, block.input)
+
+        sub_messages.append({"role": "assistant", "content": [
+            block.model_dump() for block in response.content
+        ]})
         if response.stop_reason != "tool_use":
             break
         results = []
@@ -127,8 +157,28 @@ def run_subagent(prompt: str) -> str:
             if block.type == "tool_use":
                 handler = TOOL_HANDLERS.get(block.name)
                 output = handler(**block.input) if handler else f"未知工具：{block.name}"
+                logtool.print_tool_result(str(output))
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(output)[:50000]})
-        sub_messages.append({"role": "user", "content": results})
+        
+        # 确保所有工具调用都有结果
+        final_results = []
+        for block in response.content:
+            if block.type == "tool_use":
+                found = False
+                for r in results:
+                    if r["tool_use_id"] == block.id:
+                        final_results.append(r)
+                        found = True
+                        break
+                if not found:
+                    final_results.append({"type": "tool_result", "tool_use_id": block.id, "content": "错误：工具执行失败或被跳过"})
+        
+        # 兼容性修复：添加 OpenAI 风格的 tool_call_id
+        for res in final_results:
+            if "tool_use_id" in res:
+                res["tool_call_id"] = res["tool_use_id"]
+             
+        sub_messages.append({"role": "user", "content": final_results})
     # 只有最终文本返回给父代理——子代理上下文被丢弃
     return "".join(b.text for b in response.content if hasattr(b, "text")) or "(无摘要)"
 
@@ -142,11 +192,40 @@ PARENT_TOOLS = CHILD_TOOLS + [
 
 def agent_loop(messages: list):
     while True:
+        # 准备请求数据
+        request_data = {
+            "model": MODEL,
+            "system": SYSTEM,
+            "messages": messages,
+            "tools": PARENT_TOOLS,
+        }
+
         response = client.messages.create(
             model=MODEL, system=SYSTEM, messages=messages,
             tools=PARENT_TOOLS, max_tokens=8000,
         )
-        messages.append({"role": "assistant", "content": response.content})
+
+        # 准备响应数据
+        response_data = {
+            "stop_reason": response.stop_reason,
+            "content": [block.model_dump() for block in response.content],
+            "usage": response.usage.model_dump(),
+        }
+
+        # 写入日志
+        logger.log_interaction(request_data, response_data)
+
+        logtool.print_model_response_header()
+
+        for block in response.content:
+            if block.type == "text":
+                logtool.print_model_text(block.text)
+            elif block.type == "tool_use":
+                logtool.print_tool_use(block.name, block.input)
+
+        messages.append({"role": "assistant", "content": [
+            block.model_dump() for block in response.content
+        ]})
         if response.stop_reason != "tool_use":
             return
         results = []
@@ -154,30 +233,45 @@ def agent_loop(messages: list):
             if block.type == "tool_use":
                 if block.name == "task":
                     desc = block.input.get("description", "subtask")
-                    print(f"> task ({desc}): {block.input['prompt'][:80]}")
+                    print(f"{logtool.Colors.YELLOW}> task ({desc}): {block.input['prompt'][:80]}{logtool.Colors.RESET}")
                     output = run_subagent(block.input["prompt"])
                 else:
                     handler = TOOL_HANDLERS.get(block.name)
                     output = handler(**block.input) if handler else f"未知工具：{block.name}"
-                print(f"  {str(output)[:200]}")
+                logtool.print_tool_result(str(output))
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(output)})
-        messages.append({"role": "user", "content": results})
+        
+        # 确保所有工具调用都有结果
+        final_results = []
+        for block in response.content:
+            if block.type == "tool_use":
+                found = False
+                for r in results:
+                    if r["tool_use_id"] == block.id:
+                        final_results.append(r)
+                        found = True
+                        break
+                if not found:
+                    final_results.append({"type": "tool_result", "tool_use_id": block.id, "content": "错误：工具执行失败或被跳过"})
+        
+        # 兼容性修复：添加 OpenAI 风格的 tool_call_id
+        for res in final_results:
+            if "tool_use_id" in res:
+                res["tool_call_id"] = res["tool_use_id"]
+             
+        messages.append({"role": "user", "content": final_results})
 
 
 if __name__ == "__main__":
     history = []
     while True:
         try:
-            query = input("\033[36ms04 >> \033[0m")
+            logtool.print_user("")
+            query = input(f"{logtool.Colors.CYAN}s04 >> {logtool.Colors.RESET}")
         except (EOFError, KeyboardInterrupt):
             break
         if query.strip().lower() in ("q", "exit", ""):
             break
         history.append({"role": "user", "content": query})
         agent_loop(history)
-        response_content = history[-1]["content"]
-        if isinstance(response_content, list):
-            for block in response_content:
-                if hasattr(block, "text"):
-                    print(block.text)
         print()

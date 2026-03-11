@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Minimal Agent Template - 复制并自定义它。
+"""Minimal Agent Template - 复制并自定义它。
 
 这是最简单的可用代理 (~80 行)。
 它拥有你所需的一切: 3 个工具 + 循环。
@@ -11,10 +10,11 @@ Minimal Agent Template - 复制并自定义它。
     3. 输入命令，'q' 退出
 """
 
-from anthropic import Anthropic
-from pathlib import Path
-import subprocess
 import os
+import subprocess
+from pathlib import Path
+
+from anthropic import Anthropic
 
 # Configuration
 client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -37,8 +37,8 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {"command": {"type": "string"}},
-            "required": ["command"]
-        }
+            "required": ["command"],
+        },
     },
     {
         "name": "read_file",
@@ -46,8 +46,8 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {"path": {"type": "string"}},
-            "required": ["path"]
-        }
+            "required": ["path"],
+        },
     },
     {
         "name": "write_file",
@@ -56,10 +56,10 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "path": {"type": "string"},
-                "content": {"type": "string"}
+                "content": {"type": "string"},
             },
-            "required": ["path", "content"]
-        }
+            "required": ["path", "content"],
+        },
     },
 ]
 
@@ -70,7 +70,7 @@ def execute_tool(name: str, args: dict) -> str:
         try:
             r = subprocess.run(
                 args["command"], shell=True, cwd=WORKDIR,
-                capture_output=True, text=True, timeout=60
+                capture_output=True, text=True, timeout=60, check=False,
             )
             return (r.stdout + r.stderr).strip() or "(无输出)"
         except subprocess.TimeoutExpired:
@@ -127,7 +127,7 @@ def agent(prompt: str, history: list = None) -> str:
                 results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
-                    "content": output
+                    "content": output,
                 })
 
         history.append({"role": "user", "content": results})

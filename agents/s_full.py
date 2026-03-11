@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-s_full.py - 完整参考代理
+"""s_full.py - 完整参考代理
 
 结合了 s01-s11 所有机制的最终实现。
 会话 s12 (任务感知的工作树隔离) 单独教学。
@@ -45,6 +44,7 @@ import uuid
 from pathlib import Path
 from queue import Queue
 
+import logtool
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
@@ -55,6 +55,7 @@ if os.getenv("ANTHROPIC_BASE_URL"):
 WORKDIR = Path.cwd()
 client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
 MODEL = os.environ["MODEL_ID"]
+logger = logtool.get_logger()
 
 TEAM_DIR = WORKDIR / ".team"
 INBOX_DIR = TEAM_DIR / "inbox"
@@ -82,7 +83,7 @@ def run_bash(command: str) -> str:
         return "错误: 危险命令已阻止"
     try:
         r = subprocess.run(command, shell=True, cwd=WORKDIR,
-                           capture_output=True, text=True, timeout=120)
+                           capture_output=True, text=True, timeout=120, check=False)
         out = (r.stdout + r.stderr).strip()
         return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
@@ -339,7 +340,7 @@ class BackgroundManager:
     def _exec(self, tid: str, command: str, timeout: int):
         try:
             r = subprocess.run(command, shell=True, cwd=WORKDIR,
-                               capture_output=True, text=True, timeout=timeout)
+                               capture_output=True, text=True, timeout=timeout, check=False)
             output = (r.stdout + r.stderr).strip()[:50000]
             self.tasks[tid].update({"status": "completed", "result": output or "(无输出)"})
         except Exception as e:
@@ -461,6 +462,15 @@ class TeammateManager:
                         self._set_status(name, "shutdown")
                         return
                     messages.append({"role": "user", "content": json.dumps(msg)})
+
+                # 准备请求数据
+                request_data = {
+                    "model": MODEL,
+                    "system": sys_prompt,
+                    "messages": messages,
+                    "tools": tools,
+                }
+
                 try:
                     response = client.messages.create(
                         model=MODEL, system=sys_prompt, messages=messages,
@@ -468,7 +478,28 @@ class TeammateManager:
                 except Exception:
                     self._set_status(name, "shutdown")
                     return
-                messages.append({"role": "assistant", "content": response.content})
+
+                # 准备响应数据
+                response_data = {
+                    "stop_reason": response.stop_reason,
+                    "content": [block.model_dump() for block in response.content],
+                    "usage": response.usage.model_dump(),
+                }
+
+                # 写入日志
+                logger.log_interaction(request_data, response_data)
+
+                # 子线程打印，简单前缀
+                print(f"\n{logtool.Colors.MAGENTA}[{name}] model_response:{logtool.Colors.RESET}")
+                for block in response.content:
+                    if block.type == "text":
+                        print(f"{logtool.Colors.ORANGE}[{name}] {block.text}{logtool.Colors.RESET}")
+                    elif block.type == "tool_use":
+                        print(f"{logtool.Colors.YELLOW}[{name}] Tool Use: {block.input}{logtool.Colors.RESET}")
+
+                messages.append({"role": "assistant", "content": [
+                    block.model_dump() for block in response.content
+                ]})
                 if response.stop_reason != "tool_use":
                     break
                 results = []
@@ -488,9 +519,28 @@ class TeammateManager:
                                         "write_file": lambda **kw: run_write(kw["path"], kw["content"]),
                                         "edit_file": lambda **kw: run_edit(kw["path"], kw["old_text"], kw["new_text"])}
                             output = dispatch.get(block.name, lambda **kw: "未知")(**block.input)
-                        print(f"  [{name}] {block.name}: {str(output)[:120]}")
+                        print(f"{logtool.Colors.GREEN}[{name}] Tool Result: {str(output)[:200]}{logtool.Colors.RESET}")
                         results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(output)})
-                messages.append({"role": "user", "content": results})
+                
+                # 确保所有工具调用都有结果
+                final_results = []
+                for block in response.content:
+                    if block.type == "tool_use":
+                        found = False
+                        for r in results:
+                            if r["tool_use_id"] == block.id:
+                                final_results.append(r)
+                                found = True
+                                break
+                        if not found:
+                            final_results.append({"type": "tool_result", "tool_use_id": block.id, "content": "错误：工具执行失败或被跳过"})
+                
+                # 兼容性修复：添加 OpenAI 风格的 tool_call_id
+                for res in final_results:
+                    if "tool_use_id" in res:
+                        res["tool_call_id"] = res["tool_use_id"]
+                        
+                messages.append({"role": "user", "content": final_results})
                 if idle_requested:
                     break
             # -- IDLE PHASE: poll for messages and unclaimed tasks --
@@ -670,12 +720,42 @@ def agent_loop(messages: list):
         if inbox:
             messages.append({"role": "user", "content": f"<inbox>{json.dumps(inbox, indent=2)}</inbox>"})
             messages.append({"role": "assistant", "content": "已收到收件箱消息。"})
+
+        # 准备请求数据
+        request_data = {
+            "model": MODEL,
+            "system": SYSTEM,
+            "messages": messages,
+            "tools": TOOLS,
+        }
+
         # LLM call
         response = client.messages.create(
             model=MODEL, system=SYSTEM, messages=messages,
             tools=TOOLS, max_tokens=8000,
         )
-        messages.append({"role": "assistant", "content": response.content})
+
+        # 准备响应数据
+        response_data = {
+            "stop_reason": response.stop_reason,
+            "content": [block.model_dump() for block in response.content],
+            "usage": response.usage.model_dump(),
+        }
+
+        # 写入日志
+        logger.log_interaction(request_data, response_data)
+
+        logtool.print_model_response_header()
+
+        for block in response.content:
+            if block.type == "text":
+                logtool.print_model_text(block.text)
+            elif block.type == "tool_use":
+                logtool.print_tool_use(block.name, block.input)
+
+        messages.append({"role": "assistant", "content": [
+            block.model_dump() for block in response.content
+        ]})
         if response.stop_reason != "tool_use":
             return
         # Tool execution
@@ -691,7 +771,7 @@ def agent_loop(messages: list):
                     output = handler(**block.input) if handler else f"未知工具: {block.name}"
                 except Exception as e:
                     output = f"错误: {e}"
-                print(f"> {block.name}: {str(output)[:200]}")
+                logtool.print_tool_result(str(output))
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(output)})
                 if block.name == "TodoWrite":
                     used_todo = True
@@ -699,7 +779,25 @@ def agent_loop(messages: list):
         rounds_without_todo = 0 if used_todo else rounds_without_todo + 1
         if TODO.has_open_items() and rounds_without_todo >= 3:
             results.insert(0, {"type": "text", "text": "<reminder>更新你的待办事项。</reminder>"})
-        messages.append({"role": "user", "content": results})
+        # 确保所有工具调用都有结果
+        final_results = []
+        for block in response.content:
+            if block.type == "tool_use":
+                found = False
+                for r in results:
+                    if r["tool_use_id"] == block.id:
+                        final_results.append(r)
+                        found = True
+                        break
+                if not found:
+                    final_results.append({"type": "tool_result", "tool_use_id": block.id, "content": "错误：工具执行失败或被跳过"})
+        
+        # 兼容性修复：添加 OpenAI 风格的 tool_call_id
+        for res in final_results:
+            if "tool_use_id" in res:
+                res["tool_call_id"] = res["tool_use_id"]
+             
+        messages.append({"role": "user", "content": final_results})
         # s06: manual compress
         if manual_compress:
             print("[手动压缩]")
@@ -711,14 +809,15 @@ if __name__ == "__main__":
     history = []
     while True:
         try:
-            query = input("\033[36ms_full >> \033[0m")
+            logtool.print_user("")
+            query = input(f"{logtool.Colors.CYAN}s_full >> {logtool.Colors.RESET}")
         except (EOFError, KeyboardInterrupt):
             break
         if query.strip().lower() in ("q", "exit", ""):
             break
         if query.strip() == "/compact":
             if history:
-                print("[通过 /compact 手动压缩]")
+                logtool.print_info("[通过 /compact 手动压缩]")
                 history[:] = auto_compact(history)
             continue
         if query.strip() == "/tasks":

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-s08_background_tasks.py - 后台任务
+"""s08_background_tasks.py - 后台任务
 
 在后台线程中运行命令。在每次 LLM 调用之前，
 会排空通知队列以传递结果。
@@ -30,6 +29,7 @@ import threading
 import uuid
 from pathlib import Path
 
+import logtool
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
@@ -41,6 +41,7 @@ if os.getenv("ANTHROPIC_BASE_URL"):
 WORKDIR = Path.cwd()
 client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
 MODEL = os.environ["MODEL_ID"]
+logger = logtool.get_logger()
 
 SYSTEM = f"你是一个位于 {WORKDIR} 的编码代理。使用 background_run 来运行长时间运行的命令。"
 
@@ -57,7 +58,7 @@ class BackgroundManager:
         task_id = str(uuid.uuid4())[:8]
         self.tasks[task_id] = {"status": "running", "result": None, "command": command}
         thread = threading.Thread(
-            target=self._execute, args=(task_id, command), daemon=True
+            target=self._execute, args=(task_id, command), daemon=True,
         )
         thread.start()
         return f"后台任务 {task_id} 已启动：{command[:80]}"
@@ -67,7 +68,7 @@ class BackgroundManager:
         try:
             r = subprocess.run(
                 command, shell=True, cwd=WORKDIR,
-                capture_output=True, text=True, timeout=300
+                capture_output=True, text=True, timeout=300, check=False,
             )
             output = (r.stdout + r.stderr).strip()[:50000]
             status = "completed"
@@ -123,7 +124,7 @@ def run_bash(command: str) -> str:
         return "错误：危险命令被拦截"
     try:
         r = subprocess.run(command, shell=True, cwd=WORKDIR,
-                           capture_output=True, text=True, timeout=120)
+                           capture_output=True, text=True, timeout=120, check=False)
         out = (r.stdout + r.stderr).strip()
         return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
@@ -192,13 +193,44 @@ def agent_loop(messages: list):
             notif_text = "\n".join(
                 f"[bg:{n['task_id']}] {n['status']}: {n['result']}" for n in notifs
             )
+            logtool.print_info(f"后台任务结果：\n{notif_text[:200]}")
             messages.append({"role": "user", "content": f"<background-results>\n{notif_text}\n</background-results>"})
             messages.append({"role": "assistant", "content": "收到后台结果。"})
+
+        # 准备请求数据
+        request_data = {
+            "model": MODEL,
+            "system": SYSTEM,
+            "messages": messages,
+            "tools": TOOLS,
+        }
+
         response = client.messages.create(
             model=MODEL, system=SYSTEM, messages=messages,
             tools=TOOLS, max_tokens=8000,
         )
-        messages.append({"role": "assistant", "content": response.content})
+
+        # 准备响应数据
+        response_data = {
+            "stop_reason": response.stop_reason,
+            "content": [block.model_dump() for block in response.content],
+            "usage": response.usage.model_dump(),
+        }
+
+        # 写入日志
+        logger.log_interaction(request_data, response_data)
+
+        logtool.print_model_response_header()
+
+        for block in response.content:
+            if block.type == "text":
+                logtool.print_model_text(block.text)
+            elif block.type == "tool_use":
+                logtool.print_tool_use(block.name, block.input)
+
+        messages.append({"role": "assistant", "content": [
+            block.model_dump() for block in response.content
+        ]})
         if response.stop_reason != "tool_use":
             return
         results = []
@@ -209,25 +241,40 @@ def agent_loop(messages: list):
                     output = handler(**block.input) if handler else f"未知工具：{block.name}"
                 except Exception as e:
                     output = f"错误：{e}"
-                print(f"> {block.name}: {str(output)[:200]}")
+                logtool.print_tool_result(str(output))
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(output)})
-        messages.append({"role": "user", "content": results})
+
+        # 确保所有工具调用都有结果
+        final_results = []
+        for block in response.content:
+            if block.type == "tool_use":
+                found = False
+                for r in results:
+                    if r["tool_use_id"] == block.id:
+                        final_results.append(r)
+                        found = True
+                        break
+                if not found:
+                    final_results.append({"type": "tool_result", "tool_use_id": block.id, "content": "错误：工具执行失败或被跳过"})
+        
+        # 兼容性修复：添加 OpenAI 风格的 tool_call_id
+        for res in final_results:
+            if "tool_use_id" in res:
+                res["tool_call_id"] = res["tool_use_id"]
+             
+        messages.append({"role": "user", "content": final_results})
 
 
 if __name__ == "__main__":
     history = []
     while True:
         try:
-            query = input("\033[36ms08 >> \033[0m")
+            logtool.print_user("")
+            query = input(f"{logtool.Colors.CYAN}s08 >> {logtool.Colors.RESET}")
         except (EOFError, KeyboardInterrupt):
             break
         if query.strip().lower() in ("q", "exit", ""):
             break
         history.append({"role": "user", "content": query})
         agent_loop(history)
-        response_content = history[-1]["content"]
-        if isinstance(response_content, list):
-            for block in response_content:
-                if hasattr(block, "text"):
-                    print(block.text)
         print()

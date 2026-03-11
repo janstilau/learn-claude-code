@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-s10_team_protocols.py - 团队协议
+"""s10_team_protocols.py - 团队协议
 
 关闭协议和计划批准协议，均使用相同的 request_id 关联模式。
 建立在 s09 的团队消息传递之上。
@@ -197,14 +196,34 @@ class TeammateManager:
                 )
             except Exception:
                 break
-            messages.append({"role": "assistant", "content": response.content})
+            # 准备响应数据
+            response_data = {
+                "stop_reason": response.stop_reason,
+                "content": [block.model_dump() for block in response.content],
+                "usage": response.usage.model_dump()
+            }
+            
+            # 写入日志
+            logger.log_interaction(request_data, response_data)
+
+            # 子线程打印，简单前缀
+            print(f"\n{logtool.Colors.MAGENTA}[{name}] model_response:{logtool.Colors.RESET}")
+            for block in response.content:
+                if block.type == "text":
+                    print(f"{logtool.Colors.ORANGE}[{name}] {block.text}{logtool.Colors.RESET}")
+                elif block.type == "tool_use":
+                    print(f"{logtool.Colors.YELLOW}[{name}] Tool Use: {block.name} {block.input}{logtool.Colors.RESET}")
+
+            messages.append({"role": "assistant", "content": [
+                block.model_dump() for block in response.content
+            ]})
             if response.stop_reason != "tool_use":
                 break
             results = []
             for block in response.content:
                 if block.type == "tool_use":
                     output = self._exec(name, block.name, block.input)
-                    print(f"  [{name}] {block.name}: {str(output)[:120]}")
+                    print(f"{logtool.Colors.GREEN}[{name}] Tool Result: {str(output)[:200]}{logtool.Colors.RESET}")
                     results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
@@ -212,7 +231,26 @@ class TeammateManager:
                     })
                     if block.name == "shutdown_response" and block.input.get("approve"):
                         should_exit = True
-            messages.append({"role": "user", "content": results})
+            
+            # 确保所有工具调用都有结果
+            final_results = []
+            for block in response.content:
+                if block.type == "tool_use":
+                    found = False
+                    for r in results:
+                        if r["tool_use_id"] == block.id:
+                            final_results.append(r)
+                            found = True
+                            break
+                    if not found:
+                        final_results.append({"type": "tool_result", "tool_use_id": block.id, "content": "错误：工具执行失败或被跳过"})
+            
+            # 兼容性修复：添加 OpenAI 风格的 tool_call_id
+            for res in final_results:
+                if "tool_use_id" in res:
+                    res["tool_call_id"] = res["tool_use_id"]
+                 
+            messages.append({"role": "user", "content": final_results})
         member = self._find_member(name)
         if member:
             member["status"] = "shutdown" if should_exit else "idle"
@@ -306,7 +344,7 @@ def _run_bash(command: str) -> str:
     try:
         r = subprocess.run(
             command, shell=True, cwd=WORKDIR,
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=120, check=False,
         )
         out = (r.stdout + r.stderr).strip()
         return out[:50000] if out else "(无输出)"

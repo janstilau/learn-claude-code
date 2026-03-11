@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-s01_agent_loop.py - Agent 循环
+"""s01_agent_loop.py - Agent 循环
 
 AI 编码代理的核心秘密就在这一个模式中：
 
@@ -25,15 +24,11 @@ AI 编码代理的核心秘密就在这一个模式中：
 
 import os
 import subprocess
-import json
-import time
-from datetime import datetime
-
-from anthropic import Anthropic
-from dotenv import load_dotenv
 
 # 导入新的日志工具
 import logtool
+from anthropic import Anthropic
+from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
@@ -63,7 +58,7 @@ def run_bash(command: str) -> str:
         return "错误：危险命令被拦截"
     try:
         r = subprocess.run(command, shell=True, cwd=os.getcwd(),
-                           capture_output=True, text=True, timeout=120)
+                           capture_output=True, text=True, timeout=120, check=False)
         out = (r.stdout + r.stderr).strip()
         return out[:50000] if out else "(无输出)"
     except subprocess.TimeoutExpired:
@@ -78,26 +73,26 @@ def agent_loop(messages: list):
             "model": MODEL,
             "system": SYSTEM,
             "messages": messages, # 注意：这里的 messages 是引用，随着循环会变，但在此时是快照
-            "tools": TOOLS
+            "tools": TOOLS,
         }
-        
+
         response = client.messages.create(
             model=MODEL, system=SYSTEM, messages=messages,
             tools=TOOLS, max_tokens=8000,
         )
-        
+
         # 准备响应数据
         response_data = {
             "stop_reason": response.stop_reason,
             "content": [block.model_dump() for block in response.content],
-            "usage": response.usage.model_dump()
+            "usage": response.usage.model_dump(),
         }
-        
+
         # 写入日志
         logger.log_interaction(request_data, response_data)
 
         logtool.print_model_response_header()
-        
+
         for block in response.content:
             if block.type == "text":
                 logtool.print_model_text(block.text)
