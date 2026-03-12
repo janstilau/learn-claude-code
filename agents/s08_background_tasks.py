@@ -78,6 +78,7 @@ class BackgroundManager:
         except Exception as e:
             output = f"错误：{e}"
             status = "error"
+
         self.tasks[task_id]["status"] = status
         self.tasks[task_id]["result"] = output or "(无输出)"
         with self._lock:
@@ -165,6 +166,7 @@ TOOL_HANDLERS = {
     "read_file":        lambda **kw: run_read(kw["path"], kw.get("limit")),
     "write_file":       lambda **kw: run_write(kw["path"], kw["content"]),
     "edit_file":        lambda **kw: run_edit(kw["path"], kw["old_text"], kw["new_text"]),
+
     "background_run":   lambda **kw: BG.run(kw["command"]),
     "check_background": lambda **kw: BG.check(kw.get("task_id")),
 }
@@ -178,6 +180,7 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
     {"name": "edit_file", "description": "替换文件中的确切文本。",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
+
     {"name": "background_run", "description": "在后台线程中运行命令。立即返回 task_id。",
      "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
     {"name": "check_background", "description": "检查后台任务状态。省略 task_id 以列出所有。",
