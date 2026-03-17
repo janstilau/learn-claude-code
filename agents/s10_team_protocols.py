@@ -53,6 +53,7 @@ import time
 import uuid
 from pathlib import Path
 
+import logtool
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
@@ -63,6 +64,7 @@ if os.getenv("ANTHROPIC_BASE_URL"):
 WORKDIR = Path.cwd()
 client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
 MODEL = os.environ["MODEL_ID"]
+logger = logtool.get_logger()
 TEAM_DIR = WORKDIR / ".team"
 INBOX_DIR = TEAM_DIR / "inbox"
 
@@ -83,6 +85,7 @@ _tracker_lock = threading.Lock()
 
 
 # -- MessageBus: 每个队友的 JSONL 收件箱 --
+# MessageBus 这里的逻辑不变. 
 class MessageBus:
     def __init__(self, inbox_dir: Path):
         self.dir = inbox_dir
@@ -174,8 +177,8 @@ class TeammateManager:
     def _teammate_loop(self, name: str, role: str, prompt: str):
         sys_prompt = (
             f"你是 '{name}'，角色：{role}，位于 {WORKDIR}。"
-            f"在进行重大工作前通过 plan_approval 提交计划。"
-            f"使用 shutdown_response 响应 shutdown_request。"
+            f"在进行重大工作前通过 submit_plan_for_review 提交计划。"
+            f"使用 respond_shutdown_request 响应 shutdown_request。"
         )
         messages = [{"role": "user", "content": prompt}]
         tools = self._teammate_tools()
@@ -186,6 +189,12 @@ class TeammateManager:
                 messages.append({"role": "user", "content": json.dumps(msg)})
             if should_exit:
                 break
+            request_data = {
+                "model": MODEL,
+                "system": sys_prompt,
+                "messages": messages,
+                "tools": tools,
+            }
             try:
                 response = client.messages.create(
                     model=MODEL,
@@ -229,7 +238,7 @@ class TeammateManager:
                         "tool_use_id": block.id,
                         "content": str(output),
                     })
-                    if block.name == "shutdown_response" and block.input.get("approve"):
+                    if block.name in ("respond_shutdown_request", "shutdown_response") and block.input.get("approve"):
                         should_exit = True
             
             # 确保所有工具调用都有结果
@@ -270,7 +279,9 @@ class TeammateManager:
             return BUS.send(sender, args["to"], args["content"], args.get("msg_type", "message"))
         if tool_name == "read_inbox":
             return json.dumps(BUS.read_inbox(sender), indent=2)
-        if tool_name == "shutdown_response":
+        
+        # 增加了一些 tool, 比如 shutdown_response, plan_approval
+        if tool_name in ("respond_shutdown_request", "shutdown_response"):
             req_id = args["request_id"]
             approve = args["approve"]
             with _tracker_lock:
@@ -281,7 +292,7 @@ class TeammateManager:
                 "shutdown_response", {"request_id": req_id, "approve": approve},
             )
             return f"关闭已{'批准' if approve else '拒绝'}"
-        if tool_name == "plan_approval":
+        if tool_name in ("submit_plan_for_review", "plan_approval"):
             plan_text = args.get("plan", "")
             req_id = str(uuid.uuid4())[:8]
             with _tracker_lock:
@@ -308,9 +319,9 @@ class TeammateManager:
              "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "content": {"type": "string"}, "msg_type": {"type": "string", "enum": list(VALID_MSG_TYPES)}}, "required": ["to", "content"]}},
             {"name": "read_inbox", "description": "读取并排空你的收件箱。",
              "input_schema": {"type": "object", "properties": {}}},
-            {"name": "shutdown_response", "description": "响应关闭请求。批准以关闭，拒绝以继续工作。",
+            {"name": "respond_shutdown_request", "description": "响应负责人发起的关闭请求。批准后关闭，拒绝后继续工作。",
              "input_schema": {"type": "object", "properties": {"request_id": {"type": "string"}, "approve": {"type": "boolean"}, "reason": {"type": "string"}}, "required": ["request_id", "approve"]}},
-            {"name": "plan_approval", "description": "提交计划以供负责人批准。提供计划文本。",
+            {"name": "submit_plan_for_review", "description": "提交计划给负责人审批。",
              "input_schema": {"type": "object", "properties": {"plan": {"type": "string"}}, "required": ["plan"]}},
         ]
 
@@ -416,7 +427,7 @@ def _check_shutdown_status(request_id: str) -> str:
 
 
 # -- Lead tool dispatch (12 tools) --
-TOOL_HANDLERS = {
+MAIN_TOOL_HANDLERS = {
     "bash":              lambda **kw: _run_bash(kw["command"]),
     "read_file":         lambda **kw: _run_read(kw["path"], kw.get("limit")),
     "write_file":        lambda **kw: _run_write(kw["path"], kw["content"]),
@@ -426,9 +437,13 @@ TOOL_HANDLERS = {
     "send_message":      lambda **kw: BUS.send("lead", kw["to"], kw["content"], kw.get("msg_type", "message")),
     "read_inbox":        lambda **kw: json.dumps(BUS.read_inbox("lead"), indent=2),
     "broadcast":         lambda **kw: BUS.broadcast("lead", kw["content"], TEAM.member_names()),
-    "shutdown_request":  lambda **kw: handle_shutdown_request(kw["teammate"]),
-    "shutdown_response": lambda **kw: _check_shutdown_status(kw.get("request_id", "")),
-    "plan_approval":     lambda **kw: handle_plan_review(kw["request_id"], kw["approve"], kw.get("feedback", "")),
+    
+    "request_teammate_shutdown":     lambda **kw: handle_shutdown_request(kw["teammate"]),
+    "check_shutdown_request_status": lambda **kw: _check_shutdown_status(kw.get("request_id", "")),
+    "review_teammate_plan":          lambda **kw: handle_plan_review(kw["request_id"], kw["approve"], kw.get("feedback", "")),
+    "shutdown_request":              lambda **kw: handle_shutdown_request(kw["teammate"]),
+    "shutdown_response":             lambda **kw: _check_shutdown_status(kw.get("request_id", "")),
+    "plan_approval":                 lambda **kw: handle_plan_review(kw["request_id"], kw["approve"], kw.get("feedback", "")),
 }
 
 # these base tools are unchanged from s02
@@ -451,11 +466,12 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {}}},
     {"name": "broadcast", "description": "向所有队友发送消息。",
      "input_schema": {"type": "object", "properties": {"content": {"type": "string"}}, "required": ["content"]}},
-    {"name": "shutdown_request", "description": "请求队友优雅地关闭。返回一个用于跟踪的 request_id。",
+    
+    {"name": "request_teammate_shutdown", "description": "向指定队友发起优雅关闭请求。返回可跟踪的 request_id。",
      "input_schema": {"type": "object", "properties": {"teammate": {"type": "string"}}, "required": ["teammate"]}},
-    {"name": "shutdown_response", "description": "通过 request_id 检查关闭请求的状态。",
+    {"name": "check_shutdown_request_status", "description": "通过 request_id 查询关闭请求状态。",
      "input_schema": {"type": "object", "properties": {"request_id": {"type": "string"}}, "required": ["request_id"]}},
-    {"name": "plan_approval", "description": "批准或拒绝队友的计划。提供 request_id + approve + 可选反馈。",
+    {"name": "review_teammate_plan", "description": "审批队友计划。提供 request_id、approve 与可选 feedback。",
      "input_schema": {"type": "object", "properties": {"request_id": {"type": "string"}, "approve": {"type": "boolean"}, "feedback": {"type": "string"}}, "required": ["request_id", "approve"]}},
 ]
 
@@ -485,7 +501,7 @@ def agent_loop(messages: list):
         results = []
         for block in response.content:
             if block.type == "tool_use":
-                handler = TOOL_HANDLERS.get(block.name)
+                handler = MAIN_TOOL_HANDLERS.get(block.name)
                 try:
                     output = handler(**block.input) if handler else f"未知工具：{block.name}"
                 except Exception as e:

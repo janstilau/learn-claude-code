@@ -75,7 +75,7 @@ SYSTEM = (
     "使用任务 + 工作树工具进行多任务工作。"
     "对于并行或有风险的更改：创建任务，分配工作树通道，"
     "在这些通道中运行命令，然后在收尾时选择保留/删除。"
-    "当你需要生命周期可见性时使用 worktree_events。"
+    "当你需要生命周期可见性时使用 list_worktree_events。"
 )
 
 
@@ -538,6 +538,18 @@ TOOL_HANDLERS = {
     "read_file": lambda **kw: run_read(kw["path"], kw.get("limit")),
     "write_file": lambda **kw: run_write(kw["path"], kw["content"]),
     "edit_file": lambda **kw: run_edit(kw["path"], kw["old_text"], kw["new_text"]),
+    "create_task": lambda **kw: TASKS.create(kw["subject"], kw.get("description", "")),
+    "list_tasks": lambda **kw: TASKS.list_all(),
+    "get_task": lambda **kw: TASKS.get(kw["task_id"]),
+    "update_task": lambda **kw: TASKS.update(kw["task_id"], kw.get("status"), kw.get("owner")),
+    "bind_task_worktree": lambda **kw: TASKS.bind_worktree(kw["task_id"], kw["worktree"], kw.get("owner", "")),
+    "create_worktree": lambda **kw: WORKTREES.create(kw["name"], kw.get("task_id"), kw.get("base_ref", "HEAD")),
+    "list_worktrees": lambda **kw: WORKTREES.list_all(),
+    "get_worktree_status": lambda **kw: WORKTREES.status(kw["name"]),
+    "run_in_worktree": lambda **kw: WORKTREES.run(kw["name"], kw["command"]),
+    "keep_worktree": lambda **kw: WORKTREES.keep(kw["name"]),
+    "remove_worktree": lambda **kw: WORKTREES.remove(kw["name"], kw.get("force", False), kw.get("complete_task", False)),
+    "list_worktree_events": lambda **kw: EVENTS.list_recent(kw.get("limit", 20)),
     "task_create": lambda **kw: TASKS.create(kw["subject"], kw.get("description", "")),
     "task_list": lambda **kw: TASKS.list_all(),
     "task_get": lambda **kw: TASKS.get(kw["task_id"]),
@@ -600,7 +612,7 @@ TOOLS = [
         },
     },
     {
-        "name": "task_create",
+        "name": "create_task",
         "description": "在共享任务板上创建一个新任务。",
         "input_schema": {
             "type": "object",
@@ -612,12 +624,12 @@ TOOLS = [
         },
     },
     {
-        "name": "task_list",
+        "name": "list_tasks",
         "description": "列出所有任务及其状态、所有者和工作树绑定。",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
-        "name": "task_get",
+        "name": "get_task",
         "description": "通过 ID 获取任务详情。",
         "input_schema": {
             "type": "object",
@@ -626,7 +638,7 @@ TOOLS = [
         },
     },
     {
-        "name": "task_update",
+        "name": "update_task",
         "description": "更新任务状态或所有者。",
         "input_schema": {
             "type": "object",
@@ -642,7 +654,7 @@ TOOLS = [
         },
     },
     {
-        "name": "task_bind_worktree",
+        "name": "bind_task_worktree",
         "description": "将任务绑定到工作树名称。",
         "input_schema": {
             "type": "object",
@@ -655,7 +667,7 @@ TOOLS = [
         },
     },
     {
-        "name": "worktree_create",
+        "name": "create_worktree",
         "description": "创建一个 git worktree 并可选择将其绑定到任务。",
         "input_schema": {
             "type": "object",
@@ -668,12 +680,12 @@ TOOLS = [
         },
     },
     {
-        "name": "worktree_list",
+        "name": "list_worktrees",
         "description": "列出 .worktrees/index.json 中跟踪的工作树。",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
-        "name": "worktree_status",
+        "name": "get_worktree_status",
         "description": "显示一个工作树的 git 状态。",
         "input_schema": {
             "type": "object",
@@ -682,7 +694,7 @@ TOOLS = [
         },
     },
     {
-        "name": "worktree_run",
+        "name": "run_in_worktree",
         "description": "在指定的工作树目录中运行 Shell 命令。",
         "input_schema": {
             "type": "object",
@@ -694,7 +706,7 @@ TOOLS = [
         },
     },
     {
-        "name": "worktree_remove",
+        "name": "remove_worktree",
         "description": "移除工作树并可选择将绑定的任务标记为完成。",
         "input_schema": {
             "type": "object",
@@ -707,7 +719,7 @@ TOOLS = [
         },
     },
     {
-        "name": "worktree_keep",
+        "name": "keep_worktree",
         "description": "将工作树标记为保留状态而不移除它。",
         "input_schema": {
             "type": "object",
@@ -716,7 +728,7 @@ TOOLS = [
         },
     },
     {
-        "name": "worktree_events",
+        "name": "list_worktree_events",
         "description": "列出 .worktrees/events.jsonl 中最近的工作树/任务生命周期事件。",
         "input_schema": {
             "type": "object",

@@ -209,6 +209,7 @@ class TeammateManager:
         sys_prompt = (
             f"你是 '{name}'，角色: {role}，团队: {team_name}，位于 {WORKDIR}。"
             f"当你没有更多工作时使用 idle 工具。你会自动认领新任务。"
+            f"响应关闭请求时使用 respond_shutdown_request。提交计划审批时使用 submit_plan_for_review。"
         )
         messages = [{"role": "user", "content": prompt}]
         tools = self._teammate_tools()
@@ -354,7 +355,7 @@ class TeammateManager:
             return BUS.send(sender, args["to"], args["content"], args.get("msg_type", "message"))
         if tool_name == "read_inbox":
             return json.dumps(BUS.read_inbox(sender), indent=2)
-        if tool_name == "shutdown_response":
+        if tool_name in ("respond_shutdown_request", "shutdown_response"):
             req_id = args["request_id"]
             with _tracker_lock:
                 if req_id in shutdown_requests:
@@ -364,7 +365,7 @@ class TeammateManager:
                 "shutdown_response", {"request_id": req_id, "approve": args["approve"]},
             )
             return f"关闭请求 {'已批准' if args['approve'] else '已拒绝'}"
-        if tool_name == "plan_approval":
+        if tool_name in ("submit_plan_for_review", "plan_approval"):
             plan_text = args.get("plan", "")
             req_id = str(uuid.uuid4())[:8]
             with _tracker_lock:
@@ -393,9 +394,9 @@ class TeammateManager:
              "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "content": {"type": "string"}, "msg_type": {"type": "string", "enum": list(VALID_MSG_TYPES)}}, "required": ["to", "content"]}},
             {"name": "read_inbox", "description": "读取并清空你的收件箱。",
              "input_schema": {"type": "object", "properties": {}}},
-            {"name": "shutdown_response", "description": "响应关闭请求。",
+            {"name": "respond_shutdown_request", "description": "响应领导发来的关闭请求（批准或拒绝）。",
              "input_schema": {"type": "object", "properties": {"request_id": {"type": "string"}, "approve": {"type": "boolean"}, "reason": {"type": "string"}}, "required": ["request_id", "approve"]}},
-            {"name": "plan_approval", "description": "提交计划以供领导批准。",
+            {"name": "submit_plan_for_review", "description": "提交计划，等待领导审批。",
              "input_schema": {"type": "object", "properties": {"plan": {"type": "string"}}, "required": ["plan"]}},
             {"name": "idle", "description": "表明你没有更多工作。进入空闲轮询阶段。",
              "input_schema": {"type": "object", "properties": {}}},
@@ -515,9 +516,12 @@ TOOL_HANDLERS = {
     "send_message":      lambda **kw: BUS.send("lead", kw["to"], kw["content"], kw.get("msg_type", "message")),
     "read_inbox":        lambda **kw: json.dumps(BUS.read_inbox("lead"), indent=2),
     "broadcast":         lambda **kw: BUS.broadcast("lead", kw["content"], TEAM.member_names()),
-    "shutdown_request":  lambda **kw: handle_shutdown_request(kw["teammate"]),
-    "shutdown_response": lambda **kw: _check_shutdown_status(kw.get("request_id", "")),
-    "plan_approval":     lambda **kw: handle_plan_review(kw["request_id"], kw["approve"], kw.get("feedback", "")),
+    "request_teammate_shutdown":   lambda **kw: handle_shutdown_request(kw["teammate"]),
+    "check_shutdown_request_status": lambda **kw: _check_shutdown_status(kw.get("request_id", "")),
+    "review_teammate_plan":        lambda **kw: handle_plan_review(kw["request_id"], kw["approve"], kw.get("feedback", "")),
+    "shutdown_request":            lambda **kw: handle_shutdown_request(kw["teammate"]),
+    "shutdown_response":           lambda **kw: _check_shutdown_status(kw.get("request_id", "")),
+    "plan_approval":               lambda **kw: handle_plan_review(kw["request_id"], kw["approve"], kw.get("feedback", "")),
     "idle":              lambda **kw: "领导不空闲。",
     "claim_task":        lambda **kw: claim_task(kw["task_id"], "lead"),
 }
@@ -542,11 +546,11 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {}}},
     {"name": "broadcast", "description": "向所有队友发送消息。",
      "input_schema": {"type": "object", "properties": {"content": {"type": "string"}}, "required": ["content"]}},
-    {"name": "shutdown_request", "description": "请求队友关闭。",
+    {"name": "request_teammate_shutdown", "description": "向指定队友发起关闭请求。",
      "input_schema": {"type": "object", "properties": {"teammate": {"type": "string"}}, "required": ["teammate"]}},
-    {"name": "shutdown_response", "description": "检查关闭请求状态。",
+    {"name": "check_shutdown_request_status", "description": "按 request_id 查询关闭请求状态。",
      "input_schema": {"type": "object", "properties": {"request_id": {"type": "string"}}, "required": ["request_id"]}},
-    {"name": "plan_approval", "description": "批准或拒绝队友的计划。",
+    {"name": "review_teammate_plan", "description": "审批队友提交的计划（通过/拒绝）。",
      "input_schema": {"type": "object", "properties": {"request_id": {"type": "string"}, "approve": {"type": "boolean"}, "feedback": {"type": "string"}}, "required": ["request_id", "approve"]}},
     {"name": "idle", "description": "进入空闲状态 (对于领导 -- 很少使用)。",
      "input_schema": {"type": "object", "properties": {}}},
