@@ -15,6 +15,14 @@ interface DocRendererProps {
   version: string;
 }
 
+interface DocEntry {
+  version: string;
+  locale: string;
+  content: string;
+}
+
+const docs = docsData as DocEntry[];
+
 function renderMarkdown(md: string): string {
   const result = unified()
     .use(remarkParse)
@@ -62,15 +70,9 @@ export function DocRenderer({ version }: DocRendererProps) {
   const locale = useLocale();
 
   const doc = useMemo(() => {
-    const match = docsData.find(
-      (d: { version: string; locale: string }) =>
-        d.version === version && d.locale === locale
-    );
+    const match = docs.find((d) => d.version === version && d.locale === locale);
     if (match) return match;
-    return docsData.find(
-      (d: { version: string; locale: string }) =>
-        d.version === version && d.locale === "en"
-    );
+    return docs.find((d) => d.version === version && d.locale === "en");
   }, [version, locale]);
 
   if (!doc) return null;

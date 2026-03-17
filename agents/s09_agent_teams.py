@@ -80,6 +80,7 @@ class MessageBus:
         self.dir = inbox_dir
         self.dir.mkdir(parents=True, exist_ok=True)
 
+#   发消息, 就是将 JSON 写到了收件人的 JSONL 文件中
     def send(self, sender: str, to: str, content: str,
              msg_type: str = "message", extra: dict = None) -> str:
         if msg_type not in VALID_MSG_TYPES:
@@ -96,7 +97,8 @@ class MessageBus:
         with open(inbox_path, "a") as f:
             f.write(json.dumps(msg) + "\n")
         return f"已发送 {msg_type} 给 {to}"
-
+    
+#   读取收件箱, 就是将对应人名的 JSONL 文件中的 JSON 读取出来, 并清空文件
     def read_inbox(self, name: str) -> list:
         inbox_path = self.dir / f"{name}.jsonl"
         if not inbox_path.exists():
@@ -107,7 +109,7 @@ class MessageBus:
                 messages.append(json.loads(line))
         inbox_path.write_text("")
         return messages
-
+#   广播, 就是将消息发送给所有队友, 除了发送者
     def broadcast(self, sender: str, content: str, teammates: list) -> str:
         count = 0
         for name in teammates:
@@ -143,6 +145,11 @@ class TeammateManager:
                 return m
         return None
 
+#   生成队友, 就是将队友的信息写入 config.json 中, 并启动一个线程, 在这个线程里面, 调用 _teammate_loop 函数, _teammate_loop 的主要功能就是
+#   1. 读取收件箱
+#   2. 调用 Anthropic API
+#   3. 处理 API 响应
+#   4. 发送回复
     def spawn(self, name: str, role: str, prompt: str) -> str:
         member = self._find_member(name)
         if member:
@@ -171,6 +178,7 @@ class TeammateManager:
         messages = [{"role": "user", "content": prompt}]
         tools = self._teammate_tools()
         for _ in range(50):
+            # 在每次循环开始前, 先读取收件箱
             inbox = BUS.read_inbox(name)
             for msg in inbox:
                 messages.append({"role": "user", "content": json.dumps(msg)})
@@ -218,6 +226,7 @@ class TeammateManager:
             if response.stop_reason != "tool_use":
                 break
             results = []
+            # 这里的逻辑, 其实和 Agent Loop 没有太多区别, 都是遍历 response.content, 如果是 tool_use, 就调用 _exec 函数, 并将结果写入 results 中
             for block in response.content:
                 if block.type == "tool_use":
                     output = self._exec(name, block.name, block.input)
@@ -243,6 +252,7 @@ class TeammateManager:
             return _run_write(args["path"], args["content"])
         if tool_name == "edit_file":
             return _run_edit(args["path"], args["old_text"], args["new_text"])
+        
         if tool_name == "send_message":
             return BUS.send(sender, args["to"], args["content"], args.get("msg_type", "message"))
         if tool_name == "read_inbox":
@@ -260,6 +270,7 @@ class TeammateManager:
              "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
             {"name": "edit_file", "description": "替换文件中的确切文本。",
              "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
+            
             {"name": "send_message", "description": "向队友发送消息。",
              "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "content": {"type": "string"}, "msg_type": {"type": "string", "enum": list(VALID_MSG_TYPES)}}, "required": ["to", "content"]}},
             {"name": "read_inbox", "description": "读取并排空你的收件箱。",
@@ -374,6 +385,7 @@ TOOLS = [
 
 def agent_loop(messages: list):
     while True:
+        # 每次都读取一下, lead 相关的 msg 的消息, 然后加到消息历史中
         inbox = BUS.read_inbox("lead")
         if inbox:
             messages.append({
