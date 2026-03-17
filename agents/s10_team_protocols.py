@@ -319,6 +319,7 @@ class TeammateManager:
              "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "content": {"type": "string"}, "msg_type": {"type": "string", "enum": list(VALID_MSG_TYPES)}}, "required": ["to", "content"]}},
             {"name": "read_inbox", "description": "读取并排空你的收件箱。",
              "input_schema": {"type": "object", "properties": {}}},
+            
             {"name": "respond_shutdown_request", "description": "响应负责人发起的关闭请求。批准后关闭，拒绝后继续工作。",
              "input_schema": {"type": "object", "properties": {"request_id": {"type": "string"}, "approve": {"type": "boolean"}, "reason": {"type": "string"}}, "required": ["request_id", "approve"]}},
             {"name": "submit_plan_for_review", "description": "提交计划给负责人审批。",

@@ -305,21 +305,29 @@ class TeammateManager:
                 if idle_requested:
                     break
 
+
+            # 之前的版本, 空闲阶段就直接退出函数了, 线程结束. 
+            # 现在, 空闲阶段会继续轮询收件箱, 直到有新的消息或任务被认领. 
             # -- 空闲阶段: 轮询收件箱消息和未认领任务 --
             self._set_status(name, "idle")
             resume = False
             polls = IDLE_TIMEOUT // max(POLL_INTERVAL, 1)
             for _ in range(polls):
+                # 这里比较粗糙, 就是简单的 sleep 来控制线程轮询的频率
                 time.sleep(POLL_INTERVAL)
                 inbox = BUS.read_inbox(name)
+                # 首先看一下, 外界有没有对你的消息. 
                 if inbox:
                     for msg in inbox:
+                        # 如果外界让你关了, 直接就关了, 不做后续处理了. 
                         if msg.get("type") == "shutdown_request":
                             self._set_status(name, "shutdown")
                             return
                         messages.append({"role": "user", "content": json.dumps(msg)})
+                        
                     resume = True
                     break
+                # 然后看一看, 外界有没有没人做的任务. 
                 unclaimed = scan_unclaimed_tasks()
                 if unclaimed:
                     task = unclaimed[0]
@@ -375,6 +383,8 @@ class TeammateManager:
                 {"request_id": req_id, "plan": plan_text},
             )
             return f"计划已提交 (request_id={req_id})。等待批准。"
+        
+        
         if tool_name == "claim_task":
             return claim_task(args["task_id"], sender)
         return f"未知工具: {tool_name}"
