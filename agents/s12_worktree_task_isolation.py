@@ -542,6 +542,8 @@ TOOL_HANDLERS = {
     "list_tasks": lambda **kw: TASKS.list_all(),
     "get_task": lambda **kw: TASKS.get(kw["task_id"]),
     "update_task": lambda **kw: TASKS.update(kw["task_id"], kw.get("status"), kw.get("owner")),
+    
+    
     "bind_task_worktree": lambda **kw: TASKS.bind_worktree(kw["task_id"], kw["worktree"], kw.get("owner", "")),
     "create_worktree": lambda **kw: WORKTREES.create(kw["name"], kw.get("task_id"), kw.get("base_ref", "HEAD")),
     "list_worktrees": lambda **kw: WORKTREES.list_all(),
